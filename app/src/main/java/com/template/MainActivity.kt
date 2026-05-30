@@ -9,7 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade // 👈 终极杀招：引入官方动画组件绕过 Bug
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -39,31 +38,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(color = MaterialTheme.colors.background) {
-                    AppNavigation()
+                    AppScreen()
                 }
             }
         }
     }
 }
 
-// 简单的页面导航路由（使用 Crossfade 完美绕过编译 Bug，并附带丝滑的渐变切换动画！）
+// 终极杀招：将所有界面融合到一个函数中，彻底消灭跨函数状态传递导致的编译器 Bug！
 @Composable
-fun AppNavigation() {
-    val currentScreen = remember { mutableStateOf("Home") }
-
-    Crossfade(targetState = currentScreen.value) { screen ->
-        when (screen) {
-            "Home" -> MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
-            "Gallery" -> GalleryScreen(onBack = { currentScreen.value = "Home" })
-        }
-    }
-}
-
-@Composable
-fun MainScreen(onNavigateToGallery: () -> Unit) {
+fun AppScreen() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val fileManager = remember { FileManager() }
+    
+    // 控制显示主页还是图库的开关
+    val showGallery = remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -87,93 +77,89 @@ fun MainScreen(onNavigateToGallery: () -> Unit) {
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("尘尘的壁纸屋", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colors.primary)
-        Spacer(modifier = Modifier.height(64.dp))
+    if (showGallery.value) {
+        // ================= 【图库界面】 =================
+        val landscapeFiles = remember { fileManager.getWallpapers(true, context) }
+        val portraitFiles = remember { fileManager.getWallpapers(false, context) }
+        val allFiles = landscapeFiles + portraitFiles
 
-        Button(
-            onClick = {
-                try {
-                    val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-                        putExtra(
-                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                            ComponentName(context, ChenWallpaperService::class.java)
-                        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            TopAppBar(
+                title = { Text("已缓存的壁纸 (${allFiles.size}张)") },
+                navigationIcon = {
+                    IconButton(onClick = { showGallery.value = false }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
                     }
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "启动失败", Toast.LENGTH_SHORT).show()
+                },
+                backgroundColor = MaterialTheme.colors.surface
+            )
+            
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize().padding(4.dp)
+            ) {
+                items(allFiles) { file ->
+                    AsyncImage(
+                        model = file,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .aspectRatio(0.7f)
+                            .background(Color.LightGray, RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("🚀 启动壁纸服务", fontSize = 18.sp)
+            }
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = onNavigateToGallery,
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3), contentColor = Color.White)
+    } else {
+        // ================= 【主界面】 =================
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("🖼️ 查看已缓存图库", fontSize = 18.sp)
-        }
+            Text("尘尘的壁纸屋", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colors.primary)
+            Spacer(modifier = Modifier.height(64.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = {
+                    try {
+                        val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                            putExtra(
+                                WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                                ComponentName(context, ChenWallpaperService::class.java)
+                            )
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "启动失败", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("🚀 启动壁纸服务", fontSize = 18.sp)
+            }
 
-        OutlinedButton(
-            onClick = { filePickerLauncher.launch("image/*") },
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("📁 导入本地壁纸", fontSize = 18.sp)
-        }
-    }
-}
+            Spacer(modifier = Modifier.height(24.dp))
 
-@Composable
-fun GalleryScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val fileManager = remember { FileManager() }
-    
-    // 读取所有的缓存文件供展示
-    val landscapeFiles = remember { fileManager.getWallpapers(true, context) }
-    val portraitFiles = remember { fileManager.getWallpapers(false, context) }
-    val allFiles = landscapeFiles + portraitFiles
+            Button(
+                onClick = { showGallery.value = true }, // 内部直接修改状态，绝不跨函数！
+                modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3), contentColor = Color.White)
+            ) {
+                Text("🖼️ 查看已缓存图库", fontSize = 18.sp)
+            }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("已缓存的壁纸 (${allFiles.size}张)") },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
-                }
-            },
-            backgroundColor = MaterialTheme.colors.surface
-        )
-        
-        // 瀑布流/网格图库展示
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxSize().padding(4.dp)
-        ) {
-            items(allFiles) { file ->
-                AsyncImage(
-                    model = file,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(4.dp)
-                        .aspectRatio(0.7f)
-                        .background(Color.LightGray, RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            OutlinedButton(
+                onClick = { filePickerLauncher.launch("image/*") },
+                modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("📁 导入本地壁纸", fontSize = 18.sp)
             }
         }
     }
