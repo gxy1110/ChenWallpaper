@@ -71,4 +71,6 @@ dependencies {
     androidTestImplementation(Libs.AndroidX.Test.Ext.junit)
     
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
+    // 引入 Coil 图片加载库，用于高性能的图库网格显示
+    implementation("io.coil-kt:coil-compose:2.2.2")
 }
