@@ -1,14 +1,12 @@
 package com.template
-import android.graphics.BitmapFactory
-import java.io.File
 
-// 👇 这里就是这次修复的关键：导入安卓系统提供的各种图形和壁纸类
-import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.RectF
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
+import kotlinx.coroutines.*
 
 class ChenWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine {
@@ -16,52 +14,107 @@ class ChenWallpaperService : WallpaperService() {
     }
 
     inner class ChenEngine : Engine() {
-        private var portraitBitmap: Bitmap? = null
-        private var landscapeBitmap: Bitmap? = null
-        override fun onCreate(surfaceHolder: SurfaceHolder?) {
-            super.onCreate(surfaceHolder)
-            val pFile = File(applicationContext.filesDir, "current_portrait.jpg")
-            if (pFile.exists()) portraitBitmap = BitmapFactory.decodeFile(pFile.absolutePath)
+        private val fileManager = FileManager()
+        private val networkManager = NetworkManager()
+        private var drawJob: Job? = null
+        private var fetchJob: Job? = null
+        private val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-            val lFile = File(applicationContext.filesDir, "current_landscape.jpg")
-            if (lFile.exists()) landscapeBitmap = BitmapFactory.decodeFile(lFile.absolutePath)
+        override fun onVisibilityChanged(visible: Boolean) {
+            if (visible) {
+                startWallpaperLoop()
+                startAutoFetch()
+            } else {
+                // 回到桌面不可见时，暂停重绘和抓取以省电
+                drawJob?.cancel()
+                fetchJob?.cancel()
+            }
         }
+
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
-            drawWallpaper(holder, width, height)
+            if (drawJob == null || drawJob?.isActive == false) {
+                startWallpaperLoop()
+            }
         }
 
-        private fun drawWallpaper(holder: SurfaceHolder, width: Int, height: Int) {
-            val canvas = holder.lockCanvas()
-            if (canvas != null) {
-                // 判断横竖屏
-                val isLandscape = width > height
-                // 从缓存中获取对应壁纸，如果为空则显示默认底色
-                val bitmapToDraw = if (isLandscape) landscapeBitmap else portraitBitmap
+        // 核心：10秒随机切换机制
+        private fun startWallpaperLoop() {
+            drawJob?.cancel()
+            drawJob = engineScope.launch {
+                while (isActive) {
+                    drawRandomWallpaper()
+                    delay(10000) // 延迟 10000 毫秒 (10秒)
+                }
+            }
+        }
+
+        // 核心：后台静默填充缓存池机制
+        private fun startAutoFetch() {
+            fetchJob?.cancel()
+            fetchJob = engineScope.launch {
+                while (isActive) {
+                    try {
+                        val pFiles = fileManager.getWallpapers(false, applicationContext)
+                        val lFiles = fileManager.getWallpapers(true, applicationContext)
+                        
+                        // 只要不到 100 张，就触发网络请求抓取
+                        if (pFiles.size < 100) {
+                            val portrait = networkManager.fetchPortraitWallpaper()
+                            if (portrait != null) fileManager.saveWallpaper(portrait, false, applicationContext)
+                        }
+                        if (lFiles.size < 100) {
+                            val landscape = networkManager.fetchLandscapeWallpaper()
+                            if (landscape != null) fileManager.saveWallpaper(landscape, true, applicationContext)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    delay(15000) // 每 15 秒检查/抓取一次，防止请求过快被 API 封禁 IP
+                }
+            }
+        }
+
+        private fun drawRandomWallpaper() {
+            val holder = surfaceHolder
+            val canvas = holder.lockCanvas() ?: return
+            
+            val width = canvas.width
+            val height = canvas.height
+            val isLandscape = width > height
+            
+            // 获取图库列表并打乱
+            val files = fileManager.getWallpapers(isLandscape, applicationContext).shuffled()
+            
+            if (files.isNotEmpty()) {
+                val randomFile = files.first()
+                val bitmap = BitmapFactory.decodeFile(randomFile.absolutePath)
                 
-                if (bitmapToDraw != null) {
-                    // 实现需求7：完美贴合设备布局 (Center Crop 居中裁剪算法)
-                    val scale = Math.max(width.toFloat() / bitmapToDraw.width, height.toFloat() / bitmapToDraw.height)
-                    val scaledWidth = bitmapToDraw.width * scale
-                    val scaledHeight = bitmapToDraw.height * scale
+                if (bitmap != null) {
+                    val scale = Math.max(width.toFloat() / bitmap.width, height.toFloat() / bitmap.height)
+                    val scaledWidth = bitmap.width * scale
+                    val scaledHeight = bitmap.height * scale
                     val left = (width - scaledWidth) / 2f
                     val top = (height - scaledHeight) / 2f
                     
-                    val srcRect = Rect(0, 0, bitmapToDraw.width, bitmapToDraw.height)
+                    val srcRect = Rect(0, 0, bitmap.width, bitmap.height)
                     val destRect = RectF(left, top, left + scaledWidth, top + scaledHeight)
                     
-                    canvas.drawBitmap(bitmapToDraw, srcRect, destRect, null)
-                } else {
-                    canvas.drawColor(Color.BLACK) // 没有缓存时的默认背景
+                    canvas.drawColor(Color.BLACK)
+                    canvas.drawBitmap(bitmap, srcRect, destRect, null)
+                    
+                    // 极致内存优化：画完后立即手动销毁内存中的超大原图
+                    bitmap.recycle()
                 }
-                holder.unlockCanvasAndPost(canvas)
+            } else {
+                canvas.drawColor(Color.BLACK)
             }
+            holder.unlockCanvasAndPost(canvas)
         }
         
-        // 当后台下载好新壁纸时，调用此方法更新内存并重绘
-        fun updateBitmaps(portrait: Bitmap?, landscape: Bitmap?) {
-            this.portraitBitmap = portrait
-            this.landscapeBitmap = landscape
+        override fun onDestroy() {
+            super.onDestroy()
+            engineScope.cancel()
         }
     }
 }
