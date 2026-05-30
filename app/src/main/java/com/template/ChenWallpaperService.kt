@@ -1,4 +1,6 @@
 package com.template
+import android.graphics.BitmapFactory
+import java.io.File
 
 // 👇 这里就是这次修复的关键：导入安卓系统提供的各种图形和壁纸类
 import android.graphics.Bitmap
