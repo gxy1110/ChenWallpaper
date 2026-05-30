@@ -1,4 +1,13 @@
-// ChenWallpaperService.kt
+package com.template
+
+// 👇 这里就是这次修复的关键：导入安卓系统提供的各种图形和壁纸类
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.RectF
+import android.service.wallpaper.WallpaperService
+import android.view.SurfaceHolder
+
 class ChenWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine {
         return ChenEngine()
@@ -44,7 +53,6 @@ class ChenWallpaperService : WallpaperService() {
         fun updateBitmaps(portrait: Bitmap?, landscape: Bitmap?) {
             this.portraitBitmap = portrait
             this.landscapeBitmap = landscape
-            // 触发重绘...
         }
     }
 }
