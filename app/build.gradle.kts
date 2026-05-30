@@ -69,5 +69,6 @@ dependencies {
     androidTestImplementation(Libs.AndroidX.Test.rules)
     androidTestImplementation(Libs.AndroidX.Test.runner)
     androidTestImplementation(Libs.AndroidX.Test.Ext.junit)
-
+    
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
