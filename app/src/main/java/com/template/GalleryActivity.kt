@@ -1,5 +1,6 @@
 package com.template
 
+import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,16 +28,17 @@ class GalleryActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(color = MaterialTheme.colors.background) {
-                    // 传入 finish()，点击返回按钮时直接销毁当前页面，退回主页
-                    GalleryScreen(onBack = { finish() }) 
+                    // 👇 绝杀：不传递任何回调函数，让编译器无路可走！
+                    GalleryScreen() 
                 }
             }
         }
     }
 }
 
+// 👇 零参数 Composable 函数，完美避开编译器的 dirty 状态追踪 Bug
 @Composable
-fun GalleryScreen(onBack: () -> Unit) {
+fun GalleryScreen() {
     val context = LocalContext.current
     val fileManager = remember { FileManager() }
     
@@ -48,7 +50,10 @@ fun GalleryScreen(onBack: () -> Unit) {
         TopAppBar(
             title = { Text("已缓存的壁纸 (${allFiles.size}张)") },
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = { 
+                    // 👇 内部强转：直接拿到当前页面的 Activity 控制权并关闭，不依赖外部传参
+                    (context as? Activity)?.finish() 
+                }) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
                 }
             },
