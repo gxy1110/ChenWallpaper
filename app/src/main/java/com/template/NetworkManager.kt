@@ -4,7 +4,7 @@ import okhttp3.Request
 
 class NetworkManager {
     private val client = OkHttpClient()
-    private val API_URL = "你的API地址"
+    private val API_URL = "https://tpapi.chenchen.shop"
 
     // 伪装成 PC 浏览器获取横屏壁纸
     fun fetchLandscapeWallpaper(): ByteArray? {
