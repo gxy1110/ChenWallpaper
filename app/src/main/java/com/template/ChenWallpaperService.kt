@@ -18,7 +18,14 @@ class ChenWallpaperService : WallpaperService() {
     inner class ChenEngine : Engine() {
         private var portraitBitmap: Bitmap? = null
         private var landscapeBitmap: Bitmap? = null
+        override fun onCreate(surfaceHolder: SurfaceHolder?) {
+            super.onCreate(surfaceHolder)
+            val pFile = File(applicationContext.filesDir, "current_portrait.jpg")
+            if (pFile.exists()) portraitBitmap = BitmapFactory.decodeFile(pFile.absolutePath)
 
+            val lFile = File(applicationContext.filesDir, "current_landscape.jpg")
+            if (lFile.exists()) landscapeBitmap = BitmapFactory.decodeFile(lFile.absolutePath)
+        }
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
             drawWallpaper(holder, width, height)
