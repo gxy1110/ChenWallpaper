@@ -48,12 +48,12 @@ class MainActivity : ComponentActivity() {
 // 简单的页面导航路由
 @Composable
 fun AppNavigation() {
-    var currentScreen by remember { mutableStateOf("Home") }
+    val currentScreen = remember { mutableStateOf("Home") }
 
-    if (currentScreen == "Home") {
-        MainScreen(onNavigateToGallery = { currentScreen = "Gallery" })
+    if (currentScreen.value == "Home") {
+        MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
     } else {
-        GalleryScreen(onBack = { currentScreen = "Home" })
+        GalleryScreen(onBack = { currentScreen.value = "Home" })
     }
 }
 
