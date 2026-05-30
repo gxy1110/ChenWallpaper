@@ -44,16 +44,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 // 简单的页面导航路由
 @Composable
 fun AppNavigation() {
     val currentScreen = remember { mutableStateOf("Home") }
 
-    if (currentScreen.value == "Home") {
-        MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
-    } else {
-        GalleryScreen(onBack = { currentScreen.value = "Home" })
+    // 👇 终极护盾：加一层 Box 容器，防止旧版编译器在处理根级别 if/else 时“迷路”崩溃
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (currentScreen.value == "Home") {
+            MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
+        } else {
+            GalleryScreen(onBack = { currentScreen.value = "Home" })
+        }
     }
 }
 
