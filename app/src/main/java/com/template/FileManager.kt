@@ -14,21 +14,26 @@ class FileManager {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    // 保存从 API 获取的壁纸
-    fun saveWallpaper(bytes: ByteArray, isLandscape: Boolean, context: Context) {
+         // 保存从 API 获取的壁纸
+    fun saveWallpaper(byte图片s: ByteArray, isLandscape: Boolean, context: Context) {
         val hash = calculateMD5(bytes)
         val folderName = if (isLandscape) "landscape_cache" else "portrait_cache"
         val dir = File(context.filesDir, folderName)
         if (!dir.exists()) dir.mkdirs()
         
         val file = File(dir, "$hash.jpg")
-        // 若获取到重复文件，去重（文件已存在则不保存）
         if (!file.exists()) {
             file.writeBytes(bytes)
         }
+
+        // 👇 核心接线：将最新获取的壁纸另存为 current.jpg，供壁纸引擎直接读取
+        val currentFileName = if (isLandscape) "current_landscape.jpg" else "current_portrait.jpg"
+        File(context.filesDir, currentFileName).writeBytes(bytes)
+       
+        }
     }
 
-    // 导入本地图片并自动分类
+    // 导入本地并自动分类
     fun importLocalImage(filePath: String, context: Context) {
         val options = BitmapFactory.Options()
         // 只读取边缘信息，不加载实际像素，极快且省内存
