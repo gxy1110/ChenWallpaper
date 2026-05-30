@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade // 👈 终极杀招：引入官方动画组件绕过 Bug
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -44,17 +45,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-// 简单的页面导航路由
+
+// 简单的页面导航路由（使用 Crossfade 完美绕过编译 Bug，并附带丝滑的渐变切换动画！）
 @Composable
 fun AppNavigation() {
     val currentScreen = remember { mutableStateOf("Home") }
 
-    // 👇 终极护盾：加一层 Box 容器，防止旧版编译器在处理根级别 if/else 时“迷路”崩溃
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (currentScreen.value == "Home") {
-            MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
-        } else {
-            GalleryScreen(onBack = { currentScreen.value = "Home" })
+    Crossfade(targetState = currentScreen.value) { screen ->
+        when (screen) {
+            "Home" -> MainScreen(onNavigateToGallery = { currentScreen.value = "Gallery" })
+            "Gallery" -> GalleryScreen(onBack = { currentScreen.value = "Home" })
         }
     }
 }
@@ -63,7 +63,7 @@ fun AppNavigation() {
 fun MainScreen(onNavigateToGallery: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val fileManager = FileManager()
+    val fileManager = remember { FileManager() }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -75,7 +75,6 @@ fun MainScreen(onNavigateToGallery: () -> Unit) {
                     val bytes = inputStream?.readBytes()
                     inputStream?.close()
                     if (bytes != null) {
-                        // 导入的本地图片暂存为横屏测试，你可以在此后完善文件解析逻辑
                         fileManager.saveWallpaper(bytes, true, context)
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "导入成功！", Toast.LENGTH_SHORT).show()
