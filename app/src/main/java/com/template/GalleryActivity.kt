@@ -15,26 +15,35 @@ class GalleryActivity : ComponentActivity() {
     private lateinit var fileManager: FileManager
     private var currentFiles = listOf<File>()
     private var currentDetailFile: File? = null
-    private lateinit var tabButtons: List<Button>
+    private var currentType = 0
+    private var isTrashMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
 
         fileManager = FileManager()
+        isTrashMode = intent.getBooleanExtra("IS_TRASH", false)
+
+        val tvTitle = findViewById<TextView>(R.id.tvTitle)
+        val btnBatchRestore = findViewById<Button>(R.id.btnBatchRestore)
+        val btnSetWall = findViewById<Button>(R.id.btnSetWall)
+        val btnDelete = findViewById<Button>(R.id.btnDelete)
+        val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
+        
+        tvTitle.text = if (isTrashMode) "回收站" else "已缓存图库"
+        if (isTrashMode) {
+            btnBatchRestore.visibility = View.VISIBLE
+            btnSetWall.text = "恢复到图库"
+            btnDelete.text = "永久删除"
+        } else {
+            btnSetWall.text = "设为系统壁纸"
+            btnDelete.text = "移至回收站"
+        }
+
         findViewById<Button>(R.id.btnBack).setOnClickListener { finish() }
 
         val gridView = findViewById<GridView>(R.id.galleryGridView)
-        val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
-        val detailImage = findViewById<ImageView>(R.id.detailImage)
-
-        // 收集分类按钮组
-        val tabNetPort = findViewById<Button>(R.id.tabNetPort)
-        val tabNetLand = findViewById<Button>(R.id.tabNetLand)
-        val tabLocPort = findViewById<Button>(R.id.tabLocPort)
-        val tabLocLand = findViewById<Button>(R.id.tabLocLand)
-        tabButtons = listOf(tabNetPort, tabNetLand, tabLocPort, tabLocLand)
-
         val adapter = object : BaseAdapter() {
             override fun getCount() = currentFiles.size
             override fun getItem(position: Int) = currentFiles[position]
@@ -51,16 +60,24 @@ class GalleryActivity : ComponentActivity() {
 
         gridView.setOnItemClickListener { _, _, position, _ ->
             currentDetailFile = currentFiles[position]
-            detailImage.load(currentDetailFile)
+            findViewById<ImageView>(R.id.detailImage).load(currentDetailFile)
             detailContainer.visibility = View.VISIBLE
         }
 
-        // 核心：加载分类并渲染选项卡颜色
-        fun loadCategory(type: Int) {
-            currentFiles = fileManager.getWallpapers(type, this)
-            adapter.notifyDataSetChanged()
-            
-            // 选中的按钮变成蓝色高亮，未选中的变成灰色
+        val tabNetPort = findViewById<Button>(R.id.tabNetPort)
+        val tabNetLand = findViewById<Button>(R.id.tabNetLand)
+        val tabLocPort = findViewById<Button>(R.id.tabLocPort)
+        val tabLocLand = findViewById<Button>(R.id.tabLocLand)
+        val tabButtons = listOf(tabNetPort, tabNetLand, tabLocPort, tabLocLand)
+
+        // 核心：动态更新所有 Tab 的数量显示
+        fun updateTabsAndLoad(type: Int) {
+            currentType = type
+            tabNetPort.text = "网络竖屏 (${fileManager.getWallpapers(0, isTrashMode, this).size})"
+            tabNetLand.text = "网络横屏 (${fileManager.getWallpapers(1, isTrashMode, this).size})"
+            tabLocPort.text = "本地竖屏 (${fileManager.getWallpapers(2, isTrashMode, this).size})"
+            tabLocLand.text = "本地横屏 (${fileManager.getWallpapers(3, isTrashMode, this).size})"
+
             for (i in tabButtons.indices) {
                 if (i == type) {
                     tabButtons[i].setBackgroundColor(Color.parseColor("#2196F3"))
@@ -70,39 +87,63 @@ class GalleryActivity : ComponentActivity() {
                     tabButtons[i].setTextColor(Color.BLACK)
                 }
             }
+
+            currentFiles = fileManager.getWallpapers(type, isTrashMode, this)
+            adapter.notifyDataSetChanged()
         }
 
-        tabNetPort.setOnClickListener { loadCategory(0) }
-        tabNetLand.setOnClickListener { loadCategory(1) }
-        tabLocPort.setOnClickListener { loadCategory(2) }
-        tabLocLand.setOnClickListener { loadCategory(3) }
+        tabNetPort.setOnClickListener { updateTabsAndLoad(0) }
+        tabNetLand.setOnClickListener { updateTabsAndLoad(1) }
+        tabLocPort.setOnClickListener { updateTabsAndLoad(2) }
+        tabLocLand.setOnClickListener { updateTabsAndLoad(3) }
 
-        findViewById<Button>(R.id.btnSetWall).setOnClickListener {
-            currentDetailFile?.let { file ->
-                Toast.makeText(this, "正在手动覆盖系统壁纸...", Toast.LENGTH_SHORT).show()
-                Thread {
-                    try {
-                        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                        WallpaperManager.getInstance(this).setBitmap(bitmap)
-                        runOnUiThread { Toast.makeText(this, "设置成功！", Toast.LENGTH_SHORT).show() }
-                    } catch (e: Exception) { e.printStackTrace() }
-                }.start()
+        // 批量恢复逻辑
+        btnBatchRestore.setOnClickListener {
+            if (currentFiles.isNotEmpty()) {
+                currentFiles.forEach { file -> fileManager.restoreFromTrash(file, currentType, this) }
+                Toast.makeText(this, "批量恢复成功", Toast.LENGTH_SHORT).show()
+                updateTabsAndLoad(currentType)
             }
         }
 
-        findViewById<Button>(R.id.btnDelete).setOnClickListener {
+        // 详情操作 1: 设壁纸 或 恢复单张
+        btnSetWall.setOnClickListener {
             currentDetailFile?.let { file ->
-                file.delete()
+                if (isTrashMode) {
+                    fileManager.restoreFromTrash(file, currentType, this)
+                    Toast.makeText(this, "已恢复", Toast.LENGTH_SHORT).show()
+                    detailContainer.visibility = View.GONE
+                    updateTabsAndLoad(currentType)
+                } else {
+                    Toast.makeText(this, "正在设置系统壁纸...", Toast.LENGTH_SHORT).show()
+                    Thread {
+                        try {
+                            WallpaperManager.getInstance(this).setBitmap(BitmapFactory.decodeFile(file.absolutePath))
+                            runOnUiThread { Toast.makeText(this, "设置成功！", Toast.LENGTH_SHORT).show() }
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }.start()
+                }
+            }
+        }
+
+        // 详情操作 2: 移入回收站 或 永久删除
+        btnDelete.setOnClickListener {
+            currentDetailFile?.let { file ->
+                if (isTrashMode) {
+                    file.delete()
+                    Toast.makeText(this, "彻底删除", Toast.LENGTH_SHORT).show()
+                } else {
+                    fileManager.moveToTrash(file, currentType, this)
+                    Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show()
+                }
                 detailContainer.visibility = View.GONE
-                currentFiles = currentFiles.filter { it.absolutePath != file.absolutePath }
-                adapter.notifyDataSetChanged()
-                Toast.makeText(this, "已彻底移出缓存池", Toast.LENGTH_SHORT).show()
+                updateTabsAndLoad(currentType)
             }
         }
 
         findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { detailContainer.visibility = View.GONE }
 
-        // 默认初始化进入网络竖屏
-        loadCategory(0)
+        // 初始化
+        updateTabsAndLoad(0)
     }
 }
