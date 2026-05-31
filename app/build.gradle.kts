@@ -6,7 +6,7 @@ plugins {
 android {
     compileSdk = 34
     defaultConfig {
-        applicationId = Libs.App.applicationId
+        applicationId = "com.chenchen.wallpaper"
         minSdk = Libs.App.minSdkVersion
         targetSdk = 34
         versionCode = ReleaseConfig.appVersionCode
