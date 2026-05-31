@@ -52,4 +52,14 @@
         android:textSize="18sp"
         android:backgroundTint="#9E9E9E"
         android:textColor="#FFFFFF" />
+
+        <Button
+        android:id="@+id/btnSetTime"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="16dp"
+        android:text="⏱️ 设置自动切换时间"
+        android:textSize="18sp"
+        android:backgroundTint="#FF9800"
+        android:textColor="#FFFFFF" />
 </LinearLayout>
