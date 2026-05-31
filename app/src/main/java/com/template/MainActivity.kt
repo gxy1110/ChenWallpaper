@@ -1,7 +1,9 @@
 package com.template
 
+import android.app.AlertDialog
 import android.app.WallpaperManager
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -12,83 +14,71 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 核心：直接加载原生 XML 布局，不使用任何 Compose
         setContentView(R.layout.activity_main)
 
         val fileManager = FileManager()
         val networkManager = NetworkManager()
+        val prefs = getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
 
-        // 导入本地壁纸的回调逻辑
         val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val inputStream = contentResolver.openInputStream(uri)
-                        val bytes = inputStream?.readBytes()
+                        // 将 URI 拷贝到临时文件以便解析长宽
+                        val tempFile = File(cacheDir, "temp_import.jpg")
+                        val outputStream = FileOutputStream(tempFile)
+                        inputStream?.copyTo(outputStream)
                         inputStream?.close()
-                        if (bytes != null) {
-                            fileManager.saveWallpaper(bytes, true, this@MainActivity)
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(this@MainActivity, "导入成功！", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                        outputStream.close()
+                        
+                        fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
+                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "本地图片导入成功！", Toast.LENGTH_SHORT).show() }
+                    } catch (e: Exception) { e.printStackTrace() }
                 }
             }
         }
 
-        // 按钮1：启动服务
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
-            try {
-                val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-                    putExtra(
-                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                        ComponentName(this@MainActivity, ChenWallpaperService::class.java)
-                    )
-                }
-                startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(this, "启动失败", Toast.LENGTH_SHORT).show()
-            }
+            startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java))
+            })
         }
 
-        // 按钮2：手动从 API 更新
         findViewById<Button>(R.id.btnManualUpdate).setOnClickListener {
             Toast.makeText(this, "正在后台获取新壁纸...", Toast.LENGTH_SHORT).show()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val portrait = networkManager.fetchPortraitWallpaper()
-                    if (portrait != null) fileManager.saveWallpaper(portrait, false, this@MainActivity)
-
-                    val landscape = networkManager.fetchLandscapeWallpaper()
-                    if (landscape != null) fileManager.saveWallpaper(landscape, true, this@MainActivity)
-
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "获取成功！", Toast.LENGTH_SHORT).show()
-                    }
+                    networkManager.fetchPortraitWallpaper()?.let { fileManager.saveNetworkWallpaper(it, false, this@MainActivity) }
+                    networkManager.fetchLandscapeWallpaper()?.let { fileManager.saveNetworkWallpaper(it, true, this@MainActivity) }
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "获取成功！", Toast.LENGTH_SHORT).show() }
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "网络错误，请检查API", Toast.LENGTH_SHORT).show()
-                    }
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "网络错误", Toast.LENGTH_SHORT).show() }
                 }
             }
         }
 
-        // 按钮3：跳转到图库页面
         findViewById<Button>(R.id.btnGallery).setOnClickListener {
             startActivity(Intent(this, GalleryActivity::class.java))
         }
 
-        // 按钮4：触发导入本地
-        findViewById<Button>(R.id.btnImport).setOnClickListener {
-            filePickerLauncher.launch("image/*")
+        findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch("image/*") }
+
+        findViewById<Button>(R.id.btnSetTime).setOnClickListener {
+            val times = arrayOf("10秒", "30秒", "60秒 (1分钟)", "300秒 (5分钟)")
+            val values = intArrayOf(10, 30, 60, 300)
+            AlertDialog.Builder(this)
+                .setTitle("选择切换间隔")
+                .setItems(times) { _, which ->
+                    prefs.edit().putInt("interval", values[which]).apply()
+                    Toast.makeText(this, "已设置为 ${times[which]}，重新启动服务后生效", Toast.LENGTH_SHORT).show()
+                }.show()
         }
     }
 }
