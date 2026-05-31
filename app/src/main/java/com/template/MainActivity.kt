@@ -4,119 +4,91 @@ import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Button
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(color = MaterialTheme.colors.background) {
-                    MainScreen()
-                }
-            }
-        }
-    }
-}
+        // 核心：直接加载原生 XML 布局，不使用任何 Compose
+        setContentView(R.layout.activity_main)
 
-@Composable
-fun MainScreen() {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val fileManager = remember { FileManager() }
+        val fileManager = FileManager()
+        val networkManager = NetworkManager()
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val bytes = inputStream?.readBytes()
-                    inputStream?.close()
-                    if (bytes != null) {
-                        fileManager.saveWallpaper(bytes, true, context)
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "导入成功！", Toast.LENGTH_SHORT).show()
+        // 导入本地壁纸的回调逻辑
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val inputStream = contentResolver.openInputStream(uri)
+                        val bytes = inputStream?.readBytes()
+                        inputStream?.close()
+                        if (bytes != null) {
+                            fileManager.saveWallpaper(bytes, true, this@MainActivity)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@MainActivity, "导入成功！", Toast.LENGTH_SHORT).show()
+                            }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
-    }
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("尘尘的壁纸屋", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colors.primary)
-        Spacer(modifier = Modifier.height(64.dp))
-
-        Button(
-            onClick = {
-                try {
-                    val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
-                        putExtra(
-                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                            ComponentName(context, ChenWallpaperService::class.java)
-                        )
-                    }
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "启动失败", Toast.LENGTH_SHORT).show()
+        // 按钮1：启动服务
+        findViewById<Button>(R.id.btnStartService).setOnClickListener {
+            try {
+                val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
+                    putExtra(
+                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                        ComponentName(this@MainActivity, ChenWallpaperService::class.java)
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("🚀 启动壁纸服务", fontSize = 18.sp)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "启动失败", Toast.LENGTH_SHORT).show()
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // 按钮2：手动从 API 更新
+        findViewById<Button>(R.id.btnManualUpdate).setOnClickListener {
+            Toast.makeText(this, "正在后台获取新壁纸...", Toast.LENGTH_SHORT).show()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val portrait = networkManager.fetchPortraitWallpaper()
+                    if (portrait != null) fileManager.saveWallpaper(portrait, false, this@MainActivity)
 
-        Button(
-            onClick = {
-                // 👇 经典方案：绕过编译器 Bug，直接让系统启动新页面！
-                context.startActivity(Intent(context, GalleryActivity::class.java))
-            },
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2196F3), contentColor = Color.White)
-        ) {
-            Text("🖼️ 查看已缓存图库", fontSize = 18.sp)
+                    val landscape = networkManager.fetchLandscapeWallpaper()
+                    if (landscape != null) fileManager.saveWallpaper(landscape, true, this@MainActivity)
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "获取成功！", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "网络错误，请检查API", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        // 按钮3：跳转到图库页面
+        findViewById<Button>(R.id.btnGallery).setOnClickListener {
+            startActivity(Intent(this, GalleryActivity::class.java))
+        }
 
-        OutlinedButton(
-            onClick = { filePickerLauncher.launch("image/*") },
-            modifier = Modifier.fillMaxWidth(0.6f).height(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("📁 导入本地壁纸", fontSize = 18.sp)
+        // 按钮4：触发导入本地
+        findViewById<Button>(R.id.btnImport).setOnClickListener {
+            filePickerLauncher.launch("image/*")
         }
     }
 }
