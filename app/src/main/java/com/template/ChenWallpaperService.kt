@@ -10,7 +10,6 @@ import android.graphics.RectF
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 import kotlinx.coroutines.*
-import java.io.File
 
 class ChenWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = ChenEngine()
@@ -19,9 +18,10 @@ class ChenWallpaperService : WallpaperService() {
         private val fileManager = FileManager()
         private val networkManager = NetworkManager()
         private val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        private var loopJob: Job? = null
         
-        // 核心内存池：锁定当前周期内使用的“一对”壁纸
+        private var displayJob: Job? = null
+        private var fetchJob: Job? = null
+        
         private var currentPortrait: Bitmap? = null
         private var currentLandscape: Bitmap? = null
         private lateinit var prefs: SharedPreferences
@@ -32,66 +32,110 @@ class ChenWallpaperService : WallpaperService() {
         override fun onCreate(surfaceHolder: SurfaceHolder?) {
             super.onCreate(surfaceHolder)
             prefs = applicationContext.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
-            // 👇 注册动态配置监听器：当主 App 修改时间时，这里会立刻收到通知
             prefs.registerOnSharedPreferenceChangeListener(this)
-            
-            // 👇 核心修复1：服务挂载瞬间即刻从缓存提取第一对壁纸，彻底终结黑屏
             loadNewPairIntoMemory()
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
-            if (visible) startWallpaperLoop() else loopJob?.cancel()
+            if (visible) {
+                startDisplayLoop()
+                startFetchLoop()
+            } else {
+                displayJob?.cancel()
+                fetchJob?.cancel()
+            }
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
             this.surfaceWidth = width
             this.surfaceHeight = height
-            // 屏幕旋转或尺寸改变时，立刻执行重绘
             drawCurrentWallpaper(holder)
-            if (loopJob == null || loopJob?.isActive == false) startWallpaperLoop()
+            if (displayJob == null || displayJob?.isActive == false) startDisplayLoop()
+            if (fetchJob == null || fetchJob?.isActive == false) startFetchLoop()
         }
 
-        // 👇 核心修复2：收到时间变更通知，立刻中断当前 delay，重新开始新周期的循环
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-            if (key == "interval") {
-                startWallpaperLoop()
-            }
+            if (key == "interval") startDisplayLoop()
         }
 
-        private fun startWallpaperLoop() {
-            loopJob?.cancel()
-            loopJob = engineScope.launch {
+        // --- 核心一：显示引擎 ---
+        private fun startDisplayLoop() {
+            displayJob?.cancel()
+            displayJob = engineScope.launch {
                 while (isActive) {
-                    val intervalSeconds = prefs.getInt("interval", 10) // 动态读取实时自定义时间
-
-                    // 1. 静默补充网络缓存池
-                    try {
-                        if (fileManager.getWallpapers(0, applicationContext).size < 15) {
-                            networkManager.fetchPortraitWallpaper()?.let { fileManager.saveNetworkWallpaper(it, false, applicationContext) }
-                        }
-                        if (fileManager.getWallpapers(1, applicationContext).size < 15) {
-                            networkManager.fetchLandscapeWallpaper()?.let { fileManager.saveNetworkWallpaper(it, true, applicationContext) }
-                        }
-                    } catch (e: Exception) { e.printStackTrace() }
-
-                    // 2. 获取本轮周期的下一对壁纸
+                    val intervalSeconds = prefs.getInt("interval", 10)
                     loadNewPairIntoMemory()
-                    
-                    // 3. 驱动主线程进行壁纸表面重绘
-                    withContext(Dispatchers.Main) {
-                        drawCurrentWallpaper(surfaceHolder)
-                    }
-                    
+                    withContext(Dispatchers.Main) { drawCurrentWallpaper(surfaceHolder) }
                     delay(intervalSeconds * 1000L)
                 }
             }
         }
 
+        // --- 核心二：智能网络抓取引擎 (1秒限流 + 自动替换机制) ---
+        private fun startFetchLoop() {
+            fetchJob?.cancel()
+            fetchJob = engineScope.launch {
+                var dupPort = 0
+                var dupLand = 0
+
+                while (isActive) {
+                    val target = prefs.getInt("target_count", 100)
+                    val autoRefresh = prefs.getBoolean("auto_refresh", false)
+
+                    val ports = fileManager.getWallpapers(0, false, applicationContext)
+                    val lands = fileManager.getWallpapers(1, false, applicationContext)
+
+                    var performedFetch = false
+
+                    // 抓取竖屏
+                    if (ports.size < target || (ports.size >= target && autoRefresh)) {
+                        val bytes = networkManager.fetchPortraitWallpaper()
+                        if (bytes != null) {
+                            val newFile = fileManager.saveNetworkWallpaper(bytes, 0, applicationContext)
+                            if (newFile != null) {
+                                dupPort = 0 // 成功获取，重置重复计数器
+                                // 如果是自动刷新替换，随机丢一张旧图进回收站
+                                if (ports.size >= target && autoRefresh) fileManager.moveToTrash(ports.random(), 0, applicationContext)
+                            } else {
+                                dupPort++
+                            }
+                            performedFetch = true
+                        }
+                    }
+
+                    // 抓取横屏
+                    if (lands.size < target || (lands.size >= target && autoRefresh)) {
+                        val bytes = networkManager.fetchLandscapeWallpaper()
+                        if (bytes != null) {
+                            val newFile = fileManager.saveNetworkWallpaper(bytes, 1, applicationContext)
+                            if (newFile != null) {
+                                dupLand = 0
+                                if (lands.size >= target && autoRefresh) fileManager.moveToTrash(lands.random(), 1, applicationContext)
+                            } else {
+                                dupLand++
+                            }
+                            performedFetch = true
+                        }
+                    }
+
+                    // 智能延迟策略：
+                    // 如果连续3次拿到重复图片，说明 API 库见底了，强行休眠 10 秒跳过；否则严格执行 1 秒间隔。
+                    if (dupPort >= 3 && dupLand >= 3) {
+                        dupPort = 0; dupLand = 0
+                        delay(10000L) 
+                    } else if (performedFetch) {
+                        delay(1000L) // 严格遵循 API 的 1 秒规则
+                    } else {
+                        delay(3000L) // 无需抓取时的空闲探测
+                    }
+                }
+            }
+        }
+
         private fun loadNewPairIntoMemory() {
-            val ports = fileManager.getWallpapers(0, applicationContext) + fileManager.getWallpapers(2, applicationContext)
-            val lands = fileManager.getWallpapers(1, applicationContext) + fileManager.getWallpapers(3, applicationContext)
-            
+            val ports = fileManager.getWallpapers(0, false, applicationContext) + fileManager.getWallpapers(2, false, applicationContext)
+            val lands = fileManager.getWallpapers(1, false, applicationContext) + fileManager.getWallpapers(3, false, applicationContext)
             if (ports.isNotEmpty()) currentPortrait = BitmapFactory.decodeFile(ports.random().absolutePath)
             if (lands.isNotEmpty()) currentLandscape = BitmapFactory.decodeFile(lands.random().absolutePath)
         }
@@ -100,15 +144,7 @@ class ChenWallpaperService : WallpaperService() {
             val canvas = holder.lockCanvas() ?: return
             try {
                 val isLandscape = surfaceWidth > surfaceHeight
-                
-                // 👇 核心修复3（统一逻辑）：旋转屏幕时，优先使用对应方向的图。
-                // 如果图库缓存里暂时没有对应的横屏/竖屏图，则自动用另一方向的图进行 Center Crop 居中裁剪对齐，确保绝不露黑
-                val bitmap = if (isLandscape) {
-                    currentLandscape ?: currentPortrait
-                } else {
-                    currentPortrait ?: currentLandscape
-                }
-
+                val bitmap = if (isLandscape) currentLandscape ?: currentPortrait else currentPortrait ?: currentLandscape
                 canvas.drawColor(Color.BLACK)
                 if (bitmap != null) {
                     val scale = Math.max(surfaceWidth.toFloat() / bitmap.width, surfaceHeight.toFloat() / bitmap.height)
@@ -116,13 +152,7 @@ class ChenWallpaperService : WallpaperService() {
                     val scaledHeight = bitmap.height * scale
                     val left = (surfaceWidth - scaledWidth) / 2f
                     val top = (surfaceHeight - scaledHeight) / 2f
-                    
-                    canvas.drawBitmap(
-                        bitmap, 
-                        Rect(0, 0, bitmap.width, bitmap.height), 
-                        RectF(left, top, left + scaledWidth, top + scaledHeight), 
-                        null
-                    )
+                    canvas.drawBitmap(bitmap, Rect(0, 0, bitmap.width, bitmap.height), RectF(left, top, left + scaledWidth, top + scaledHeight), null)
                 }
             } finally {
                 holder.unlockCanvasAndPost(canvas)
