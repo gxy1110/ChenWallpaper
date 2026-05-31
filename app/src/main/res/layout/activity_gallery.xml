@@ -23,30 +23,33 @@
                 android:text="⬅ 返回"
                 android:textColor="#FFFFFF" />
             <TextView
+                android:id="@+id/tvTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:text="四分类图库中心"
+                android:text="图库中心"
                 android:textColor="#FFFFFF"
                 android:textSize="20sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF">
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="8dp">
-                <Button android:id="@+id/tabNetPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="网络竖屏" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabNetLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="网络横屏" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabLocPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="本地竖屏" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="本地横屏" />
+        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:background="#FFFFFF">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="8dp">
+                <Button android:id="@+id/tabNetPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabNetLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabLocPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" />
             </LinearLayout>
         </HorizontalScrollView>
+
+        <Button
+            android:id="@+id/btnBatchRestore"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#4CAF50"
+            android:text="🔄 批量恢复当前分类所有壁纸"
+            android:textColor="#FFFFFF"
+            android:visibility="gone" />
 
         <GridView
             android:id="@+id/galleryGridView"
@@ -66,14 +69,12 @@
         android:background="#DD000000"
         android:visibility="gone"
         android:clickable="true">
-        
         <ImageView
             android:id="@+id/detailImage"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_marginBottom="80dp"
             android:scaleType="fitCenter" />
-            
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="80dp"
@@ -81,26 +82,9 @@
             android:background="#88000000"
             android:gravity="center"
             android:orientation="horizontal">
-            <Button
-                android:id="@+id/btnSetWall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="设为系统壁纸"
-                android:backgroundTint="#4CAF50"
-                android:layout_marginEnd="16dp"/>
-            <Button
-                android:id="@+id/btnDelete"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="删除"
-                android:backgroundTint="#F44336"
-                android:layout_marginEnd="16dp"/>
-            <Button
-                android:id="@+id/btnCloseDetail"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:backgroundTint="#9E9E9E"
-                android:text="关闭" />
+            <Button android:id="@+id/btnSetWall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#4CAF50" android:layout_marginEnd="16dp"/>
+            <Button android:id="@+id/btnDelete" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#F44336" android:layout_marginEnd="16dp"/>
+            <Button android:id="@+id/btnCloseDetail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#9E9E9E" android:text="关闭" />
         </LinearLayout>
     </FrameLayout>
 </FrameLayout>
