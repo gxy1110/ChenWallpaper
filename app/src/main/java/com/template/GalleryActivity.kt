@@ -2,6 +2,7 @@ package com.template
 
 import android.app.WallpaperManager
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +15,7 @@ class GalleryActivity : ComponentActivity() {
     private lateinit var fileManager: FileManager
     private var currentFiles = listOf<File>()
     private var currentDetailFile: File? = null
+    private lateinit var tabButtons: List<Button>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,14 +28,20 @@ class GalleryActivity : ComponentActivity() {
         val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
         val detailImage = findViewById<ImageView>(R.id.detailImage)
 
-        // 适配器逻辑
+        // 收集分类按钮组
+        val tabNetPort = findViewById<Button>(R.id.tabNetPort)
+        val tabNetLand = findViewById<Button>(R.id.tabNetLand)
+        val tabLocPort = findViewById<Button>(R.id.tabLocPort)
+        val tabLocLand = findViewById<Button>(R.id.tabLocLand)
+        tabButtons = listOf(tabNetPort, tabNetLand, tabLocPort, tabLocLand)
+
         val adapter = object : BaseAdapter() {
             override fun getCount() = currentFiles.size
             override fun getItem(position: Int) = currentFiles[position]
             override fun getItemId(position: Int) = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val imageView = ImageView(this@GalleryActivity)
-                imageView.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 800)
+                imageView.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600)
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                 imageView.load(currentFiles[position])
                 return imageView
@@ -41,53 +49,60 @@ class GalleryActivity : ComponentActivity() {
         }
         gridView.adapter = adapter
 
-        // 点击网格图片，打开沉浸式预览
         gridView.setOnItemClickListener { _, _, position, _ ->
             currentDetailFile = currentFiles[position]
             detailImage.load(currentDetailFile)
             detailContainer.visibility = View.VISIBLE
         }
 
-        // 分类按钮点击逻辑
+        // 核心：加载分类并渲染选项卡颜色
         fun loadCategory(type: Int) {
             currentFiles = fileManager.getWallpapers(type, this)
             adapter.notifyDataSetChanged()
+            
+            // 选中的按钮变成蓝色高亮，未选中的变成灰色
+            for (i in tabButtons.indices) {
+                if (i == type) {
+                    tabButtons[i].setBackgroundColor(Color.parseColor("#2196F3"))
+                    tabButtons[i].setTextColor(Color.WHITE)
+                } else {
+                    tabButtons[i].setBackgroundColor(Color.parseColor("#E0E0E0"))
+                    tabButtons[i].setTextColor(Color.BLACK)
+                }
+            }
         }
-        findViewById<Button>(R.id.tabNetPort).setOnClickListener { loadCategory(0) }
-        findViewById<Button>(R.id.tabNetLand).setOnClickListener { loadCategory(1) }
-        findViewById<Button>(R.id.tabLocPort).setOnClickListener { loadCategory(2) }
-        findViewById<Button>(R.id.tabLocLand).setOnClickListener { loadCategory(3) }
 
-        // 详情页：设为系统壁纸
+        tabNetPort.setOnClickListener { loadCategory(0) }
+        tabNetLand.setOnClickListener { loadCategory(1) }
+        tabLocPort.setOnClickListener { loadCategory(2) }
+        tabLocLand.setOnClickListener { loadCategory(3) }
+
         findViewById<Button>(R.id.btnSetWall).setOnClickListener {
             currentDetailFile?.let { file ->
-                Toast.makeText(this, "正在设置系统壁纸...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在手动覆盖系统壁纸...", Toast.LENGTH_SHORT).show()
                 Thread {
-                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                    WallpaperManager.getInstance(this).setBitmap(bitmap)
-                    runOnUiThread { Toast.makeText(this, "设置成功！", Toast.LENGTH_SHORT).show() }
+                    try {
+                        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                        WallpaperManager.getInstance(this).setBitmap(bitmap)
+                        runOnUiThread { Toast.makeText(this, "设置成功！", Toast.LENGTH_SHORT).show() }
+                    } catch (e: Exception) { e.printStackTrace() }
                 }.start()
             }
         }
 
-        // 详情页：删除图片
         findViewById<Button>(R.id.btnDelete).setOnClickListener {
             currentDetailFile?.let { file ->
                 file.delete()
                 detailContainer.visibility = View.GONE
-                // 刷新当前列表
                 currentFiles = currentFiles.filter { it.absolutePath != file.absolutePath }
                 adapter.notifyDataSetChanged()
-                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "已彻底移出缓存池", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // 详情页：关闭预览
-        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener {
-            detailContainer.visibility = View.GONE
-        }
+        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { detailContainer.visibility = View.GONE }
 
-        // 初始加载网络竖屏
+        // 默认初始化进入网络竖屏
         loadCategory(0)
     }
 }
