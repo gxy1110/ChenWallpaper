@@ -1,43 +1,106 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#F0F0F0"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:background="#2196F3"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:background="#F0F0F0"
+        android:orientation="vertical">
 
-        <Button
-            android:id="@+id/btnBack"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:background="@android:color/transparent"
-            android:text="⬅ 返回"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="#2196F3"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/btnBack"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:text="⬅ 返回"
+                android:textColor="#FFFFFF" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="四分类图库中心"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:layout_width="wrap_content"
+        <HorizontalScrollView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:text="已缓存的壁纸"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:background="#FFFFFF">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="8dp">
+                <Button android:id="@+id/tabNetPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="网络竖屏" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabNetLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="网络横屏" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabLocPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="本地竖屏" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="本地横屏" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <GridView
+            android:id="@+id/galleryGridView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:horizontalSpacing="4dp"
+            android:numColumns="3"
+            android:padding="4dp"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="4dp" />
     </LinearLayout>
 
-    <GridView
-        android:id="@+id/galleryGridView"
+    <FrameLayout
+        android:id="@+id/detailContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:horizontalSpacing="4dp"
-        android:numColumns="3"
-        android:padding="4dp"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="4dp" />
-</LinearLayout>
+        android:background="#DD000000"
+        android:visibility="gone"
+        android:clickable="true">
+        
+        <ImageView
+            android:id="@+id/detailImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginBottom="80dp"
+            android:scaleType="fitCenter" />
+            
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:layout_gravity="bottom"
+            android:background="#88000000"
+            android:gravity="center"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/btnSetWall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="设为系统壁纸"
+                android:backgroundTint="#4CAF50"
+                android:layout_marginEnd="16dp"/>
+            <Button
+                android:id="@+id/btnDelete"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="删除"
+                android:backgroundTint="#F44336"
+                android:layout_marginEnd="16dp"/>
+            <Button
+                android:id="@+id/btnCloseDetail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#9E9E9E"
+                android:text="关闭" />
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
