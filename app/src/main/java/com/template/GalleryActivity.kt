@@ -115,7 +115,6 @@ class GalleryActivity : ComponentActivity() {
         var scaleFactor = 1f
         var translateX = 0f
         var translateY = 0f
-
         detailImage.pivotX = 0f
         detailImage.pivotY = 0f
 
@@ -143,10 +142,7 @@ class GalleryActivity : ComponentActivity() {
             }
         }
         onBackPressedDispatcher.addCallback(this, backPressedCallback)
-
-        findViewById<Button>(R.id.btnBack).setOnClickListener {
-            backPressedCallback.handleOnBackPressed()
-        }
+        findViewById<Button>(R.id.btnBack).setOnClickListener { backPressedCallback.handleOnBackPressed() }
 
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -261,21 +257,7 @@ class GalleryActivity : ComponentActivity() {
             updateBatchUI()
         }
 
-        btnDeleteBatch.setOnClickListener {
-            if (selectedFiles.isEmpty()) return@setOnClickListener
-            val count = selectedFiles.size
-            if (isTrashMode) {
-                selectedFiles.forEach { it.delete() }
-                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
-            } else {
-                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
-                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
-            }
-            isSelectionMode = false
-            updateTabsAndLoad(currentType)
-        }
-
-        // 👇 核心引入：6 个标签栏的管理
+        // 👇 修复 2：将 updateTabsAndLoad 定义和依赖放在最前面，解决未解析引用
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
             findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand),
@@ -307,6 +289,20 @@ class GalleryActivity : ComponentActivity() {
 
             currentFiles = fileManager.getWallpapers(type, isTrashMode, this)
             adapter.notifyDataSetChanged()
+        }
+
+        btnDeleteBatch.setOnClickListener {
+            if (selectedFiles.isEmpty()) return@setOnClickListener
+            val count = selectedFiles.size
+            if (isTrashMode) {
+                selectedFiles.forEach { it.delete() }
+                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
+            } else {
+                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
+                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
+            }
+            isSelectionMode = false
+            updateTabsAndLoad(currentType)
         }
 
         tabButtons[0].setOnClickListener { updateTabsAndLoad(0) }
