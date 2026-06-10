@@ -58,20 +58,29 @@
             android:textColor="#FFFFFF"
             android:visibility="gone" />
 
-        <LinearLayout
+        <HorizontalScrollView
             android:id="@+id/batchActionContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#E3F2FD"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:padding="8dp"
-            android:visibility="gone">
-            <Button android:id="@+id/btnCancelBatch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="取消" android:backgroundTint="#9E9E9E"/>
-            <Button android:id="@+id/btnSelectAll" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="全选" android:layout_marginStart="8dp" android:backgroundTint="#FF9800"/>
-            <Space android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"/>
-            <Button android:id="@+id/btnSaveBatch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="保存选中(0)" android:backgroundTint="#4CAF50" android:textColor="#FFFFFF"/>
-        </LinearLayout>
+            android:visibility="gone"
+            android:fillViewport="true">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="8dp">
+                
+                <Button android:id="@+id/btnCancelBatch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="取消" android:backgroundTint="#9E9E9E"/>
+                <Button android:id="@+id/btnSelectAll" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="全选" android:layout_marginStart="8dp" android:backgroundTint="#FF9800"/>
+                
+                <View android:layout_width="16dp" android:layout_height="1dp" />
+                
+                <Button android:id="@+id/btnDeleteBatch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="删除(0)" android:backgroundTint="#F44336" android:textColor="#FFFFFF" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/btnSaveBatch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="保存(0)" android:backgroundTint="#4CAF50" android:textColor="#FFFFFF"/>
+            </LinearLayout>
+        </HorizontalScrollView>
 
         <GridView
             android:id="@+id/galleryGridView"
