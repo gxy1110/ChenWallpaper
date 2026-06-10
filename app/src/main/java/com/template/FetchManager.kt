@@ -11,7 +11,7 @@ object FetchManager {
     private val customOkHttpClient = okhttp3.OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // 👇 核心进化：这是你的“元数据结构缓存池”！保存每个网盘下所有扫描到的图片链接
+    // 👇 核心进化：你的“元数据结构缓存池”！保存每个网盘下所有扫描到的图片链接
     private val webDavImageCache = mutableMapOf<String, MutableList<String>>()
 
     fun startFetching(context: Context) {
@@ -59,14 +59,14 @@ object FetchManager {
                             val enabledPaths = config.paths.filter { it.isEnabled }.map { it.path }
                             if (enabledPaths.isNotEmpty()) {
                                 
-                                // 👇 如果元数据池空了，开始全自动深度遍历扫描
+                                // 👇 如果元数据池没数据，开始全自动深度遍历扫描
                                 if (webDavImageCache[config.id].isNullOrEmpty()) {
                                     val allImages = mutableListOf<String>()
                                     val folderQueue = enabledPaths.toMutableList()
                                     var scanDepth = 0
                                     
-                                    // 递归探测，最多下潜 30 个文件夹，防止服务器被扫爆
-                                    while (folderQueue.isNotEmpty() && scanDepth < 30) {
+                                    // 递归探测引擎，最多下潜 200 次文件夹（防止陷入死循环被封 IP）
+                                    while (folderQueue.isNotEmpty() && scanDepth < 200) {
                                         val targetUrl = folderQueue.removeAt(0)
                                         val items = WebDavManager.listDirectory(config, targetUrl)
                                         if (items != null) {
@@ -76,8 +76,9 @@ object FetchManager {
                                                     folderQueue.add(item.href) // 发现子文件夹，加入待扫队列
                                                 } else {
                                                     val name = item.name.lowercase()
-                                                    if (name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg")) {
-                                                        allImages.add(item.href) // 发现图片，存入元数据
+                                                    // 捕获各种常见图片格式
+                                                    if (name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg") || name.endsWith(".webp") || name.endsWith(".gif")) {
+                                                        allImages.add(item.href) // 发现图片，存入元数据大池
                                                     }
                                                 }
                                             }
@@ -86,14 +87,15 @@ object FetchManager {
                                     }
                                     
                                     if (allImages.isNotEmpty()) {
-                                        webDavImageCache[config.id] = allImages.shuffled().toMutableList() // 打乱顺序，随机获取
+                                        webDavImageCache[config.id] = allImages.shuffled().toMutableList() // 打乱顺序，准备抽取
                                     } else {
-                                        config.isConnected = false // 如果扫完啥也没有，亮红灯
+                                        config.isConnected = false // 如果扫完依然啥也没有，亮红灯预警
                                     }
+                                    // 刷新红绿灯状态到 UI
                                     WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
                                 }
 
-                                // 👇 从元数据池里抽一张直接下载，无需再发 PROPFIND 探测包！
+                                // 👇 重点：直接从元数据池里抽一张图片进行下载，绝不浪费网络请求！
                                 val images = webDavImageCache[config.id]
                                 if (!images.isNullOrEmpty()) {
                                     val imgUrl = images.removeAt(0)
