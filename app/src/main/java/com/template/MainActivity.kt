@@ -42,7 +42,6 @@ class MainActivity : ComponentActivity() {
         val tvFetchStatus = findViewById<TextView>(R.id.tvFetchStatus)
         webDavContainer = findViewById(R.id.webDavContainer)
 
-        // 初始化数据回显
         etInterval.setText(prefs.getInt("interval", 10).toString())
         swAutoRefresh.isChecked = prefs.getBoolean("auto_refresh", false)
         cbBuiltIn.isChecked = prefs.getBoolean("use_builtin", true)
@@ -148,35 +147,52 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch("image/*") }
         findViewById<Button>(R.id.btnImportFolder).setOnClickListener { folderPickerLauncher.launch(null) }
         
-        // 👇 核心升级：一键保存全局配置拦截器
+        findViewById<Button>(R.id.btnViewLogs).setOnClickListener {
+            val tv = TextView(this).apply { text = LogManager.getLogs(); setPadding(40,40,40,40); setTextColor(Color.BLACK) }
+            val sv = ScrollView(this).apply { addView(tv) }
+            AlertDialog.Builder(this).setTitle("底层运行日志 (最新1000条)").setView(sv)
+                .setPositiveButton("外部导出") { _, _ -> 
+                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, LogManager.getLogs()) }
+                    startActivity(Intent.createChooser(intent, "导出日志"))
+                }
+                .setNeutralButton("清空日志") { _, _ -> LogManager.clearLogs(); Toast.makeText(this, "面板日志已清空", Toast.LENGTH_SHORT).show() }
+                .setNegativeButton("关闭", null).show()
+        }
+
+        findViewById<Button>(R.id.btnClearHistory).setOnClickListener {
+            AlertDialog.Builder(this).setTitle("警告").setMessage("清空抓取账本后，API 和 WebDAV 会重新下载您以前下载过的所有旧图片。确定要清空吗？")
+                .setPositiveButton("确定清空") { _, _ -> LogManager.clearHistory(this) }
+                .setNegativeButton("取消", null).show()
+        }
+
+        // 👇 核心一键保存事务
         findViewById<Button>(R.id.btnSaveAll).setOnClickListener {
             val apiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
             val davTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
             
-            // 写入 SharedPreferences
             prefs.edit()
+                .putInt("interval", if (etInterval.text.isNotEmpty()) etInterval.text.toString().toInt() else 10)
                 .putBoolean("use_builtin", cbBuiltIn.isChecked)
                 .putBoolean("use_custom", cbCustom.isChecked)
                 .putString("custom_api", etCustomApi.text.toString().trim())
                 .putInt("target_count_api", apiTarget)
                 .putInt("target_count_webdav", davTarget)
                 .apply()
-            
-            // 触发容量控制，根据新设置的保留容量清除多余图片
+                
             fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
             
-            Toast.makeText(this, "所有配置已手动提交保存！", Toast.LENGTH_SHORT).show()
-        }
-
-        findViewById<Button>(R.id.btnSaveInterval).setOnClickListener {
-            if (etInterval.text.isNotEmpty()) { prefs.edit().putInt("interval", etInterval.text.toString().toInt()).apply(); Toast.makeText(this, "时间已生效", Toast.LENGTH_SHORT).show() }
+            // 如果引擎正在运行，自动重启它以应用新的并发配置
+            if (prefs.getBoolean("is_fetching_enabled", false)) {
+                FetchManager.stopFetching(this)
+                FetchManager.startFetching(this)
+            }
+            
+            Toast.makeText(this, "所有配置已保存并生效！", Toast.LENGTH_SHORT).show()
         }
         
         swAutoRefresh.setOnCheckedChangeListener { _, isChecked -> prefs.edit().putBoolean("auto_refresh", isChecked).apply() }
 
         findViewById<Button>(R.id.btnAddWebDav).setOnClickListener { showAddWebDavDialog() }
-        
-        // 初始渲染 WebDAV 列表
         renderWebDavList()
     }
 
@@ -201,10 +217,7 @@ class MainActivity : ComponentActivity() {
             val tvStatus = TextView(this).apply { text = if(config.isConnected) "🟢" else "🔴"; setPadding(0,0,16,0) }
             
             val cbEnable = CheckBox(this).apply { isChecked = config.isEnabled }
-            cbEnable.setOnCheckedChangeListener { _, isChecked ->
-                config.isEnabled = isChecked
-                WebDavManager.saveConfigs(this, configs)
-            }
+            cbEnable.setOnCheckedChangeListener { _, isChecked -> config.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
 
             val btnEdit = Button(this).apply { 
                 text = "编辑"
@@ -226,10 +239,7 @@ class MainActivity : ComponentActivity() {
                 textSize = 14f
             }
             btnDelete.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            btnDelete.setOnClickListener {
-                WebDavManager.saveConfigs(this, configs.filter { it.id != config.id })
-                renderWebDavList()
-            }
+            btnDelete.setOnClickListener { WebDavManager.saveConfigs(this, configs.filter { it.id != config.id }); renderWebDavList() }
 
             header.addView(tvIcon); header.addView(tvName); header.addView(tvStatus); header.addView(cbEnable); header.addView(btnEdit); header.addView(btnDelete)
             rootCard.addView(header)
@@ -262,9 +272,7 @@ class MainActivity : ComponentActivity() {
                     setPadding(24, 16, 24, 16)
                 }
                 pEditBtn.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
-                pEditBtn.setOnClickListener {
-                    showWebDavBrowser(config, configs, p)
-                }
+                pEditBtn.setOnClickListener { showWebDavBrowser(config, configs, p) }
 
                 val pDel = Button(this).apply { 
                     text = "X"
@@ -326,18 +334,12 @@ class MainActivity : ComponentActivity() {
         AlertDialog.Builder(this).setTitle("编辑 WebDAV 节点").setView(layout).setPositiveButton("保存") { _, _ ->
             if (etName.text.isNotEmpty() && etUrl.text.isNotEmpty()) {
                 val newName = etName.text.toString().trim()
-                if (newName != config.name && configs.any { it.name == newName }) { 
-                    Toast.makeText(this, "名称不能重复", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton 
-                }
+                if (newName != config.name && configs.any { it.name == newName }) { Toast.makeText(this, "名称不能重复", Toast.LENGTH_SHORT).show(); return@setPositiveButton }
                 val newUrl = etUrl.text.toString().trim()
-                config.name = newName
-                config.url = if(newUrl.endsWith("/")) newUrl else "$newUrl/"
-                config.user = etUser.text.toString().trim()
-                config.pass = etPass.text.toString().trim()
+                config.name = newName; config.url = if(newUrl.endsWith("/")) newUrl else "$newUrl/"
+                config.user = etUser.text.toString().trim(); config.pass = etPass.text.toString().trim()
                 config.isConnected = false 
-                WebDavManager.saveConfigs(this, configs)
-                renderWebDavList()
+                WebDavManager.saveConfigs(this, configs); renderWebDavList()
             }
         }.setNegativeButton("取消", null).show()
     }
@@ -346,29 +348,21 @@ class MainActivity : ComponentActivity() {
         var currentUrl = if (pathToEdit != null) pathToEdit.path else config.url
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         
-        val tvPath = TextView(this).apply { 
-            setPadding(32,32,32,16)
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        
+        val tvPath = TextView(this).apply { setPadding(32,32,32,16); setTypeface(null, android.graphics.Typeface.BOLD) }
         val listView = ListView(this)
         layout.addView(tvPath); layout.addView(listView)
 
         val dialog = AlertDialog.Builder(this).setTitle("浏览网络文件夹").setView(layout).setPositiveButton("选择当前目录") { _, _ ->
-            if (pathToEdit != null) {
-                pathToEdit.path = currentUrl
-                Toast.makeText(this, "修改路径成功！", Toast.LENGTH_SHORT).show()
-            } else {
+            if (pathToEdit != null) { pathToEdit.path = currentUrl; Toast.makeText(this, "修改路径成功！", Toast.LENGTH_SHORT).show() } 
+            else {
                 if (!config.paths.any { it.path == currentUrl }) config.paths.add(WebDavPath(currentUrl))
                 Toast.makeText(this, "已添加抓取路径！", Toast.LENGTH_SHORT).show()
             }
-            WebDavManager.saveConfigs(this, configs)
-            renderWebDavList()
+            WebDavManager.saveConfigs(this, configs); renderWebDavList()
         }.setNegativeButton("取消", null).show()
 
         fun loadUrl(url: String) {
             currentUrl = url 
-
             val decodedPath = try {
                 val fullPath = URI(url).path
                 val rootPath = URI(config.url).path
@@ -384,19 +378,11 @@ class MainActivity : ComponentActivity() {
                     if (items != null) {
                         val displayList = mutableListOf<WebDavItem>()
                         if (url != config.url) displayList.add(WebDavItem(url.substringBeforeLast('/', url.removeSuffix("/").substringBeforeLast('/') + "/"), true, ".. (返回上级)"))
-                        
                         displayList.addAll(items.sortedBy { !it.isFolder })
-                        
-                        listView.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, displayList.map { 
-                            if (it.isFolder) "📁 ${it.name}" else "🖼️ ${it.name}" 
-                        })
+                        listView.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, displayList.map { if (it.isFolder) "📁 ${it.name}" else "🖼️ ${it.name}" })
                         listView.setOnItemClickListener { _, _, position, _ -> 
                             val item = displayList[position]
-                            if (item.isFolder) {
-                                loadUrl(item.href) 
-                            } else {
-                                Toast.makeText(this@MainActivity, "请点击底部的“选择当前目录”来抓取整个文件夹", Toast.LENGTH_SHORT).show()
-                            }
+                            if (item.isFolder) loadUrl(item.href) else Toast.makeText(this@MainActivity, "请点击底部的“选择当前目录”", Toast.LENGTH_SHORT).show()
                         }
                     } else Toast.makeText(this@MainActivity, "连接失败或目录为空", Toast.LENGTH_SHORT).show()
                 }
