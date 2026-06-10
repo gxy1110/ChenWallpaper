@@ -22,7 +22,6 @@ class ChenWallpaperService : WallpaperService() {
         private var currentPortrait: Bitmap? = null
         private var currentLandscape: Bitmap? = null
         private lateinit var prefs: SharedPreferences
-        
         private var surfaceWidth = 1080
         private var surfaceHeight = 1920
 
@@ -31,10 +30,7 @@ class ChenWallpaperService : WallpaperService() {
             prefs = applicationContext.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
             prefs.registerOnSharedPreferenceChangeListener(this)
             loadNewPairIntoMemory()
-            
-            if (prefs.getBoolean("is_fetching_enabled", false)) {
-                FetchManager.startFetching(applicationContext)
-            }
+            if (prefs.getBoolean("is_fetching_enabled", false)) FetchManager.startFetching(applicationContext)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -51,10 +47,6 @@ class ChenWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == "interval") startDisplayLoop()
-            if (key in listOf("use_builtin", "use_custom", "custom_api") && prefs.getBoolean("is_fetching_enabled", false)) {
-                FetchManager.stopFetching(applicationContext)
-                FetchManager.startFetching(applicationContext)
-            }
         }
 
         private fun startDisplayLoop() {
@@ -70,7 +62,6 @@ class ChenWallpaperService : WallpaperService() {
         }
 
         private fun loadNewPairIntoMemory() {
-            // 👇 核心解封：加上了 4 和 5 (WebDAV 分区)，使得云盘图片可以渲染在桌面上
             val ports = fileManager.getWallpapers(0, false, applicationContext) + fileManager.getWallpapers(2, false, applicationContext) + fileManager.getWallpapers(4, false, applicationContext)
             val lands = fileManager.getWallpapers(1, false, applicationContext) + fileManager.getWallpapers(3, false, applicationContext) + fileManager.getWallpapers(5, false, applicationContext)
             if (ports.isNotEmpty()) currentPortrait = BitmapFactory.decodeFile(ports.random().absolutePath)
@@ -91,9 +82,7 @@ class ChenWallpaperService : WallpaperService() {
                     val top = (surfaceHeight - scaledHeight) / 2f
                     canvas.drawBitmap(bitmap, Rect(0, 0, bitmap.width, bitmap.height), RectF(left, top, left + scaledWidth, top + scaledHeight), null)
                 }
-            } finally {
-                holder.unlockCanvasAndPost(canvas)
-            }
+            } finally { holder.unlockCanvasAndPost(canvas) }
         }
 
         override fun onDestroy() {
