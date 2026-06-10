@@ -17,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import coil.load
 import java.io.File
 
@@ -58,10 +59,6 @@ class GalleryActivity : ComponentActivity() {
             btnDelete.text = "移至回收站"
         }
 
-        findViewById<Button>(R.id.btnBack).setOnClickListener { finish() }
-
-        val gridView = findViewById<GridView>(R.id.galleryGridView)
-        
         fun updateBatchUI() {
             if (isSelectionMode) {
                 batchActionContainer.visibility = View.VISIBLE
@@ -108,14 +105,13 @@ class GalleryActivity : ComponentActivity() {
                 return frameLayout
             }
         }
+        val gridView = findViewById<GridView>(R.id.galleryGridView)
         gridView.adapter = adapter
 
-        // ================== 👇 核心修复：纯净焦点追踪引擎 ==================
         var scaleFactor = 1f
         var translateX = 0f
         var translateY = 0f
 
-        // 必须重置支点为左上角 (0,0)，这样随后的数学换算才能完美贴合指尖坐标
         detailImage.pivotX = 0f
         detailImage.pivotY = 0f
 
@@ -129,16 +125,36 @@ class GalleryActivity : ComponentActivity() {
             detailImage.translationY = 0f
         }
 
+        // ================== 👇 核心修复：智能返回键拦截 ==================
+        val backPressedCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (detailContainer.visibility == View.VISIBLE) {
+                    detailContainer.visibility = View.GONE
+                    resetZoom() // 如果在看大图，只关大图
+                } else if (isSelectionMode) {
+                    isSelectionMode = false
+                    updateBatchUI() // 如果在多选，退出多选
+                } else {
+                    finish() // 否则真正退出图库页面
+                }
+            }
+        }
+        // 拦截手机系统的物理/手势返回键
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
+
+        // 拦截 UI 左上角的返回按钮
+        findViewById<Button>(R.id.btnBack).setOnClickListener {
+            backPressedCallback.handleOnBackPressed()
+        }
+        // =====================================================================
+
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val prevScale = scaleFactor
-                // 回归底层系统倍率读取，解决无法缩小的恶性 Bug
                 scaleFactor *= detector.scaleFactor
-                scaleFactor = scaleFactor.coerceIn(1f, 10f) // 支持最大 10 倍无损预览
+                scaleFactor = scaleFactor.coerceIn(1f, 10f) 
                 
                 val scaleChange = scaleFactor / prevScale
-                
-                // 核心焦点算法：保证以双指中心为圆心进行放大，完美跟手！
                 translateX = detector.focusX - (detector.focusX - translateX) * scaleChange
                 translateY = detector.focusY - (detector.focusY - translateY) * scaleChange
                 
@@ -152,7 +168,6 @@ class GalleryActivity : ComponentActivity() {
 
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
-                // 如果在放大状态，且双指没有在进行缩放，才允许拖拽画面
                 if (scaleFactor > 1f && !scaleDetector.isInProgress) { 
                     translateX -= distanceX
                     translateY -= distanceY
@@ -163,7 +178,6 @@ class GalleryActivity : ComponentActivity() {
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 if (scaleFactor > 1f) resetZoom() else {
-                    // 双击直接以指尖为中心点，爆拉 3 倍
                     scaleFactor = 3f
                     translateX = e.x - (e.x - translateX) * 3f
                     translateY = e.y - (e.y - translateY) * 3f
@@ -176,18 +190,14 @@ class GalleryActivity : ComponentActivity() {
             }
         })
 
-        // 将监听器死死绑在不会移动的 touchOverlay 透明层上，杜绝重影反馈循环
         touchOverlay.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
             gestureDetector.onTouchEvent(event)
-            
-            // 手指抬起时，如果不小心缩得比原图还小，自动回弹居中
             if (event.action == MotionEvent.ACTION_UP && scaleFactor <= 1f) {
                 resetZoom()
             }
             true
         }
-        // =====================================================================
 
         gridView.setOnItemLongClickListener { _, _, position, _ ->
             if (!isSelectionMode) {
@@ -338,8 +348,8 @@ class GalleryActivity : ComponentActivity() {
         }
 
         findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { 
-            detailContainer.visibility = View.GONE 
-            resetZoom() 
+            // 同样触发拦截逻辑，保持代码行为绝对一致
+            backPressedCallback.handleOnBackPressed()
         }
 
         updateTabsAndLoad(0)
