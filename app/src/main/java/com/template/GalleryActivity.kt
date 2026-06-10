@@ -109,12 +109,11 @@ class GalleryActivity : ComponentActivity() {
         }
         gridView.adapter = adapter
 
-        // ================== 👇 核心升级：图片缩放与手势追踪引擎 ==================
+        // ================== 👇 核心修复：高分屏手势引擎增强 ==================
         var scaleFactor = 1f
         var translateX = 0f
         var translateY = 0f
 
-        // 用于在打开新图片或关闭预览时，清除上一张图片的放大残留状态
         fun resetZoom() {
             scaleFactor = 1f
             translateX = 0f
@@ -125,10 +124,13 @@ class GalleryActivity : ComponentActivity() {
             detailImage.translationY = 0f
         }
 
-        // 侦测双指缩放操作 (1x 到 5x)
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                scaleFactor *= detector.scaleFactor
+                // 1. 解决阻尼感重：在高分屏上引入 2.5 倍信号放大器，让缩放更加灵敏跟手
+                val sensitivity = 2.5f 
+                val factor = 1.0f + (detector.scaleFactor - 1.0f) * sensitivity
+                
+                scaleFactor *= factor
                 scaleFactor = scaleFactor.coerceIn(1f, 5f) 
                 detailImage.scaleX = scaleFactor
                 detailImage.scaleY = scaleFactor
@@ -136,10 +138,11 @@ class GalleryActivity : ComponentActivity() {
             }
         })
 
-        // 侦测单指平移与双击复原
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
-                if (scaleFactor > 1f) { // 只有在放大的状态下才允许拖拽平移
+                // 2. 解决重影感：加入互斥锁 (!scaleDetector.isInProgress)
+                // 只要系统判定双指还在屏幕上缩放，就绝对屏蔽掉拖拽逻辑，彻底杜绝指令打架！
+                if (scaleFactor > 1f && !scaleDetector.isInProgress) { 
                     translateX -= distanceX
                     translateY -= distanceY
                     detailImage.translationX = translateX
@@ -148,12 +151,11 @@ class GalleryActivity : ComponentActivity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                resetZoom() // 双击直接恢复原状
+                resetZoom() 
                 return true
             }
         })
 
-        // 将事件拦截器绑定到图片视图上
         detailImage.isClickable = true
         detailImage.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
@@ -178,7 +180,7 @@ class GalleryActivity : ComponentActivity() {
                 updateBatchUI()
             } else {
                 currentDetailFile = currentFiles[position]
-                resetZoom() // 每次点开新图，确保缩放重置
+                resetZoom() 
                 detailImage.load(currentDetailFile)
                 detailContainer.visibility = View.VISIBLE
             }
@@ -281,7 +283,7 @@ class GalleryActivity : ComponentActivity() {
                     fileManager.restoreFromTrash(file, currentType, this)
                     Toast.makeText(this, "已恢复", Toast.LENGTH_SHORT).show()
                     detailContainer.visibility = View.GONE
-                    resetZoom() // 退出时重置缩放
+                    resetZoom() 
                     updateTabsAndLoad(currentType)
                 } else {
                     Toast.makeText(this, "正在设置系统壁纸...", Toast.LENGTH_SHORT).show()
@@ -305,14 +307,14 @@ class GalleryActivity : ComponentActivity() {
                     Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show()
                 }
                 detailContainer.visibility = View.GONE
-                resetZoom() // 退出时重置缩放
+                resetZoom() 
                 updateTabsAndLoad(currentType)
             }
         }
 
         findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { 
             detailContainer.visibility = View.GONE 
-            resetZoom() // 退出时重置缩放
+            resetZoom() 
         }
 
         updateTabsAndLoad(0)
