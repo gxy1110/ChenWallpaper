@@ -174,7 +174,12 @@ class MainActivity : ComponentActivity() {
             lp.setMargins(0, 0, 0, 16)
             rootCard.layoutParams = lp
 
-            val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+            // 👇 核心修复 1：扩大点击范围，整个头部加上 Padding，并接管全局点击事件
+            val header = LinearLayout(this).apply { 
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 16, 0, 16) 
+            }
             
             val tvIcon = TextView(this).apply { text = "💽 "; textSize = 20f }
             val tvName = TextView(this).apply { text = config.name; textSize = 16f; setPadding(8,0,0,0); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
@@ -186,13 +191,37 @@ class MainActivity : ComponentActivity() {
                 WebDavManager.saveConfigs(this, configs)
             }
 
-            val btnDelete = Button(this).apply { text = "删除"; setBackgroundColor(Color.parseColor("#F44336")); setTextColor(Color.WHITE) }
+            // 👇 核心修复 2：加入独立的编辑按钮
+            val btnEdit = Button(this).apply { 
+                text = "编辑"
+                setBackgroundColor(Color.parseColor("#FF9800"))
+                setTextColor(Color.WHITE)
+                minimumHeight = 0
+                minimumWidth = 0
+                setPadding(24, 16, 24, 16)
+                textSize = 14f
+            }
+            val editLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
+            btnEdit.layoutParams = editLp
+            btnEdit.setOnClickListener { showEditWebDavDialog(config, configs) }
+
+            val btnDelete = Button(this).apply { 
+                text = "删除"
+                setBackgroundColor(Color.parseColor("#F44336"))
+                setTextColor(Color.WHITE)
+                minimumHeight = 0
+                minimumWidth = 0
+                setPadding(24, 16, 24, 16)
+                textSize = 14f
+            }
+            val delLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            btnDelete.layoutParams = delLp
             btnDelete.setOnClickListener {
                 WebDavManager.saveConfigs(this, configs.filter { it.id != config.id })
                 renderWebDavList()
             }
 
-            header.addView(tvIcon); header.addView(tvName); header.addView(tvStatus); header.addView(cbEnable); header.addView(btnDelete)
+            header.addView(tvIcon); header.addView(tvName); header.addView(tvStatus); header.addView(cbEnable); header.addView(btnEdit); header.addView(btnDelete)
             rootCard.addView(header)
 
             val pathContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 16, 0, 0); visibility = View.GONE }
@@ -201,19 +230,35 @@ class MainActivity : ComponentActivity() {
                 val pText = TextView(this).apply { text = "📂 ${java.net.URLDecoder.decode(p.path.substringAfterLast('/'), "UTF-8").ifEmpty { "/" }}"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
                 val pCb = CheckBox(this).apply { isChecked = p.isEnabled }
                 pCb.setOnCheckedChangeListener { _, isChecked -> p.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
-                val pDel = Button(this).apply { text = "X"; setBackgroundColor(Color.parseColor("#9E9E9E")); setTextColor(Color.WHITE) }
+                
+                val pDel = Button(this).apply { 
+                    text = "X"
+                    setBackgroundColor(Color.parseColor("#9E9E9E"))
+                    setTextColor(Color.WHITE)
+                    minimumHeight = 0
+                    minimumWidth = 0
+                    setPadding(24, 16, 24, 16)
+                }
                 pDel.setOnClickListener { config.paths.remove(p); WebDavManager.saveConfigs(this, configs); renderWebDavList() }
                 pRow.addView(pText); pRow.addView(pCb); pRow.addView(pDel)
                 pathContainer.addView(pRow)
             }
 
-            val btnAddPath = Button(this).apply { text = "🌐 浏览并添加文件夹"; setBackgroundColor(Color.parseColor("#2196F3")); setTextColor(Color.WHITE) }
+            val btnAddPath = Button(this).apply { 
+                text = "🌐 浏览并添加此网盘中的文件夹"
+                setBackgroundColor(Color.parseColor("#2196F3"))
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 16, 0, 0) }
+            }
             btnAddPath.setOnClickListener { showWebDavBrowser(config, configs) }
             pathContainer.addView(btnAddPath)
             
-            val clickListener = View.OnClickListener { pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
-            tvIcon.setOnClickListener(clickListener); tvName.setOnClickListener(clickListener)
+            // 只要点击这一整行（除了按钮的地方），就会立刻弹开底部的抽屉
+            header.setOnClickListener { 
+                pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE 
+            }
 
+            rootCard.addView(pathContainer)
             webDavContainer.addView(rootCard)
         }
     }
@@ -238,11 +283,40 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton("取消", null).show()
     }
 
+    // 👇 核心修复 3：全新的编辑逻辑，修改后会自动重置红绿灯状态要求重新检测
+    private fun showEditWebDavDialog(config: WebDavConfig, configs: List<WebDavConfig>) {
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 32, 48, 32) }
+        val etName = EditText(this).apply { hint = "名称 (如: 尘尘的webdav)"; setText(config.name) }
+        val etUrl = EditText(this).apply { hint = "地址 (如: https://.../dav)"; setText(config.url) }
+        val etUser = EditText(this).apply { hint = "账号 (选填)"; setText(config.user) }
+        val etPass = EditText(this).apply { hint = "密码 (选填)"; setText(config.pass) }
+        layout.addView(etName); layout.addView(etUrl); layout.addView(etUser); layout.addView(etPass)
+
+        AlertDialog.Builder(this).setTitle("编辑 WebDAV 节点").setView(layout).setPositiveButton("保存") { _, _ ->
+            if (etName.text.isNotEmpty() && etUrl.text.isNotEmpty()) {
+                val newName = etName.text.toString().trim()
+                if (newName != config.name && configs.any { it.name == newName }) { 
+                    Toast.makeText(this, "名称不能重复", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton 
+                }
+                val newUrl = etUrl.text.toString().trim()
+                config.name = newName
+                config.url = if(newUrl.endsWith("/")) newUrl else "$newUrl/"
+                config.user = etUser.text.toString().trim()
+                config.pass = etPass.text.toString().trim()
+                
+                config.isConnected = false // 配置已变，重置为红灯等待管家检测
+                
+                WebDavManager.saveConfigs(this, configs)
+                renderWebDavList()
+            }
+        }.setNegativeButton("取消", null).show()
+    }
+
     private fun showWebDavBrowser(config: WebDavConfig, configs: List<WebDavConfig>) {
         var currentUrl = config.url
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         
-        // 👇 核心修复区：改为使用 setTypeface 实现代码层面的加粗
         val tvPath = TextView(this).apply { 
             setPadding(32,32,32,16)
             setTypeface(null, android.graphics.Typeface.BOLD)
