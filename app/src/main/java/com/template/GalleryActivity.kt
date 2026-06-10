@@ -237,27 +237,14 @@ class GalleryActivity : ComponentActivity() {
                         Thread.sleep(10)
                     } catch (e: Exception) { e.printStackTrace() }
                 }
-                runOnUiThread {
-                    Toast.makeText(this, "成功保存 $successCount 张图片到相册！", Toast.LENGTH_SHORT).show()
-                }
+                runOnUiThread { Toast.makeText(this, "成功保存 $successCount 张图片到相册！", Toast.LENGTH_SHORT).show() }
             }.start()
         }
 
-        findViewById<Button>(R.id.btnCancelBatch).setOnClickListener {
-            isSelectionMode = false
-            updateBatchUI()
-        }
-        findViewById<Button>(R.id.btnSelectAll).setOnClickListener {
-            selectedFiles.addAll(currentFiles)
-            updateBatchUI()
-        }
-        findViewById<Button>(R.id.btnSaveBatch).setOnClickListener {
-            saveToAlbum(selectedFiles.toList())
-            isSelectionMode = false
-            updateBatchUI()
-        }
+        findViewById<Button>(R.id.btnCancelBatch).setOnClickListener { isSelectionMode = false; updateBatchUI() }
+        findViewById<Button>(R.id.btnSelectAll).setOnClickListener { selectedFiles.addAll(currentFiles); updateBatchUI() }
+        findViewById<Button>(R.id.btnSaveBatch).setOnClickListener { saveToAlbum(selectedFiles.toList()); isSelectionMode = false; updateBatchUI() }
 
-        // 👇 修复 2：将 updateTabsAndLoad 定义和依赖放在最前面，解决未解析引用
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
             findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand),
@@ -286,7 +273,6 @@ class GalleryActivity : ComponentActivity() {
                     tabButtons[i].setTextColor(Color.BLACK)
                 }
             }
-
             currentFiles = fileManager.getWallpapers(type, isTrashMode, this)
             adapter.notifyDataSetChanged()
         }
@@ -320,9 +306,7 @@ class GalleryActivity : ComponentActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnSaveDetail).setOnClickListener {
-            currentDetailFile?.let { file -> saveToAlbum(listOf(file)) }
-        }
+        findViewById<Button>(R.id.btnSaveDetail).setOnClickListener { currentDetailFile?.let { file -> saveToAlbum(listOf(file)) } }
 
         btnSetWall.setOnClickListener {
             currentDetailFile?.let { file ->
@@ -346,22 +330,15 @@ class GalleryActivity : ComponentActivity() {
 
         btnDelete.setOnClickListener {
             currentDetailFile?.let { file ->
-                if (isTrashMode) {
-                    file.delete()
-                    Toast.makeText(this, "彻底删除", Toast.LENGTH_SHORT).show()
-                } else {
-                    fileManager.moveToTrash(file, currentType, this)
-                    Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show()
-                }
+                if (isTrashMode) { file.delete(); Toast.makeText(this, "彻底删除", Toast.LENGTH_SHORT).show() } 
+                else { fileManager.moveToTrash(file, currentType, this); Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show() }
                 detailContainer.visibility = View.GONE
                 resetZoom() 
                 updateTabsAndLoad(currentType)
             }
         }
 
-        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { 
-            backPressedCallback.handleOnBackPressed()
-        }
+        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { backPressedCallback.handleOnBackPressed() }
 
         updateTabsAndLoad(0)
     }
