@@ -23,9 +23,7 @@ class FileManager {
         return dir
     }
 
-    fun getWallpapers(type: Int, isTrash: Boolean, context: Context): List<File> {
-        return getDir(context, type, isTrash).listFiles()?.toList() ?: emptyList()
-    }
+    fun getWallpapers(type: Int, isTrash: Boolean, context: Context): List<File> = getDir(context, type, isTrash).listFiles()?.toList() ?: emptyList()
 
     fun saveNetworkWallpaper(bytes: ByteArray, type: Int, context: Context): File? {
         val md5 = calculateMD5(bytes)
@@ -35,8 +33,7 @@ class FileManager {
             val target = File(getDir(context, i, false), "$md5.jpg")
             if (target.exists()) target.delete()
         }
-        file.writeBytes(bytes)
-        return file
+        file.writeBytes(bytes); return file
     }
 
     fun importLocalImage(filePath: String, context: Context): Boolean {
@@ -44,7 +41,6 @@ class FileManager {
         BitmapFactory.decodeFile(filePath, options)
         val isLandscape = options.outWidth > options.outHeight
         val localFile = File(filePath)
-        
         if (localFile.exists()) {
             val bytes = localFile.readBytes()
             val md5 = calculateMD5(bytes)
@@ -67,8 +63,7 @@ class FileManager {
         }
         val file = File(getDir(context, type, false), "$md5.jpg")
         if (file.exists()) return null
-        file.writeBytes(bytes)
-        return file
+        file.writeBytes(bytes); return file
     }
 
     fun moveToTrash(file: File, type: Int, context: Context) {
@@ -81,7 +76,6 @@ class FileManager {
         file.renameTo(File(activeDir, file.name))
     }
 
-    // 👇 核心分离：将 API 容量和 WebDAV 容量分别进行裁剪计算
     fun shrinkNetworkCache(apiTarget: Int, davTarget: Int, context: Context) {
         listOf(0, 1).forEach { type ->
             val files = getWallpapers(type, false, context).shuffled()
