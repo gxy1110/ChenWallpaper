@@ -32,7 +32,6 @@ class ChenWallpaperService : WallpaperService() {
             prefs.registerOnSharedPreferenceChangeListener(this)
             loadNewPairIntoMemory()
             
-            // 如果用户之前点过“启动获取”，即使重启手机或服务，也会自动恢复抓取
             if (prefs.getBoolean("is_fetching_enabled", false)) {
                 FetchManager.startFetching(applicationContext)
             }
@@ -52,7 +51,6 @@ class ChenWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == "interval") startDisplayLoop()
-            // 如果高级配置变动，且处于开启状态，重启一下抓取管家以应用新地址
             if (key in listOf("use_builtin", "use_custom", "custom_api") && prefs.getBoolean("is_fetching_enabled", false)) {
                 FetchManager.stopFetching(applicationContext)
                 FetchManager.startFetching(applicationContext)
@@ -72,8 +70,9 @@ class ChenWallpaperService : WallpaperService() {
         }
 
         private fun loadNewPairIntoMemory() {
-            val ports = fileManager.getWallpapers(0, false, applicationContext) + fileManager.getWallpapers(2, false, applicationContext)
-            val lands = fileManager.getWallpapers(1, false, applicationContext) + fileManager.getWallpapers(3, false, applicationContext)
+            // 👇 核心解封：加上了 4 和 5 (WebDAV 分区)，使得云盘图片可以渲染在桌面上
+            val ports = fileManager.getWallpapers(0, false, applicationContext) + fileManager.getWallpapers(2, false, applicationContext) + fileManager.getWallpapers(4, false, applicationContext)
+            val lands = fileManager.getWallpapers(1, false, applicationContext) + fileManager.getWallpapers(3, false, applicationContext) + fileManager.getWallpapers(5, false, applicationContext)
             if (ports.isNotEmpty()) currentPortrait = BitmapFactory.decodeFile(ports.random().absolutePath)
             if (lands.isNotEmpty()) currentLandscape = BitmapFactory.decodeFile(lands.random().absolutePath)
         }
