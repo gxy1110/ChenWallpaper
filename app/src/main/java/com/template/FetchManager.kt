@@ -11,7 +11,6 @@ object FetchManager {
     private val customOkHttpClient = okhttp3.OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // WebDAV 文件夹深潜队列，避免一次性扫爆服务器
     private val webDavFolderQueue = mutableMapOf<String, MutableList<String>>()
 
     fun startFetching(context: Context) {
@@ -23,7 +22,9 @@ object FetchManager {
             var dupCount = 0
             try {
                 while (isActive) {
-                    val target = prefs.getInt("target_count", 100)
+                    // 👇 读取分离的目标参数
+                    val targetApi = prefs.getInt("target_count_api", 100)
+                    val targetDav = prefs.getInt("target_count_webdav", 100)
                     val autoRefresh = prefs.getBoolean("auto_refresh", false)
                     val useBuiltIn = prefs.getBoolean("use_builtin", true)
                     val useCustom = prefs.getBoolean("use_custom", false)
@@ -36,9 +37,9 @@ object FetchManager {
                     val davPorts = fileManager.getWallpapers(4, false, context)
                     val davLands = fileManager.getWallpapers(5, false, context)
 
-                    val needPort = ports.size < target || autoRefresh
-                    val needLand = lands.size < target || autoRefresh
-                    val needDav = davPorts.size < target || davLands.size < target || autoRefresh
+                    val needPort = ports.size < targetApi || autoRefresh
+                    val needLand = lands.size < targetApi || autoRefresh
+                    val needDav = davPorts.size < targetDav || davLands.size < targetDav || autoRefresh
 
                     val actions = mutableListOf<String>()
                     if (useBuiltIn) {
@@ -57,21 +58,20 @@ object FetchManager {
                             val config = webDavConfigs.random()
                             val enabledPaths = config.paths.filter { it.isEnabled }
                             if (enabledPaths.isNotEmpty()) {
-                                // 如果队列空了，重新从根路径开始深度搜寻
                                 if (webDavFolderQueue[config.id].isNullOrEmpty()) {
                                     webDavFolderQueue[config.id] = enabledPaths.map { it.path }.toMutableList()
                                 }
                                 
                                 val queue = webDavFolderQueue[config.id]!!
-                                val targetPath = queue.removeAt(0) // 弹出一个文件夹进行扫描
+                                val targetPath = queue.removeAt(0) 
                                 
                                 val items = WebDavManager.listDirectory(config, targetPath)
                                 if (items != null) {
-                                    config.isConnected = true // 点亮绿灯
+                                    config.isConnected = true 
                                     WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
                                     
                                     val subFolders = items.filter { it.isFolder }.map { it.href }
-                                    queue.addAll(subFolders) // 发现子文件夹，塞入队列等待日后深潜
+                                    queue.addAll(subFolders) 
                                     
                                     val images = items.filter { !it.isFolder && (it.name.endsWith(".jpg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".jpeg", true)) }
                                     if (images.isNotEmpty()) {
@@ -87,14 +87,13 @@ object FetchManager {
                                                 val saved = fileManager.saveWebDavWallpaper(bytes, type, context)
                                                 if (saved != null) {
                                                     dupCount = 0
-                                                    if (currentDavPool.size >= target && autoRefresh) fileManager.moveToTrash(currentDavPool.random(), type, context)
+                                                    if (currentDavPool.size >= targetDav && autoRefresh) fileManager.moveToTrash(currentDavPool.random(), type, context)
                                                 } else dupCount++
                                                 performedFetch = true
                                             }
                                         }
                                     }
                                 } else {
-                                    // 连接失败，亮红灯
                                     config.isConnected = false
                                     WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
                                 }
@@ -121,7 +120,7 @@ object FetchManager {
                                 val saved = fileManager.saveNetworkWallpaper(fetchedBytes, type, context)
                                 if (saved != null) {
                                     dupCount = 0
-                                    if (currentPool.size >= target && autoRefresh) fileManager.moveToTrash(currentPool.random(), type, context)
+                                    if (currentPool.size >= targetApi && autoRefresh) fileManager.moveToTrash(currentPool.random(), type, context)
                                 } else dupCount++
                                 performedFetch = true
                             }
