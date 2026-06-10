@@ -47,7 +47,10 @@ class GalleryActivity : ComponentActivity() {
         val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
         val detailImage = findViewById<ImageView>(R.id.detailImage)
         val touchOverlay = findViewById<View>(R.id.touchOverlay)
-        val batchActionContainer = findViewById<LinearLayout>(R.id.batchActionContainer)
+        val batchActionContainer = findViewById<HorizontalScrollView>(R.id.batchActionContainer)
+        
+        val btnSaveBatch = findViewById<Button>(R.id.btnSaveBatch)
+        val btnDeleteBatch = findViewById<Button>(R.id.btnDeleteBatch) // 新增批量删除绑定
         
         tvTitle.text = if (isTrashMode) "回收站" else "已缓存图库"
         if (isTrashMode) {
@@ -62,7 +65,10 @@ class GalleryActivity : ComponentActivity() {
         fun updateBatchUI() {
             if (isSelectionMode) {
                 batchActionContainer.visibility = View.VISIBLE
-                findViewById<Button>(R.id.btnSaveBatch).text = "保存选中(${selectedFiles.size})"
+                btnSaveBatch.text = "保存(${selectedFiles.size})"
+                
+                // 👇 根据当前处于哪个模式，智能变化按钮名字
+                btnDeleteBatch.text = if (isTrashMode) "彻底删除(${selectedFiles.size})" else "移至回收站(${selectedFiles.size})"
             } else {
                 batchActionContainer.visibility = View.GONE
                 selectedFiles.clear()
@@ -125,28 +131,24 @@ class GalleryActivity : ComponentActivity() {
             detailImage.translationY = 0f
         }
 
-        // ================== 👇 核心修复：智能返回键拦截 ==================
         val backPressedCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (detailContainer.visibility == View.VISIBLE) {
                     detailContainer.visibility = View.GONE
-                    resetZoom() // 如果在看大图，只关大图
+                    resetZoom() 
                 } else if (isSelectionMode) {
                     isSelectionMode = false
-                    updateBatchUI() // 如果在多选，退出多选
+                    updateBatchUI() 
                 } else {
-                    finish() // 否则真正退出图库页面
+                    finish() 
                 }
             }
         }
-        // 拦截手机系统的物理/手势返回键
         onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
-        // 拦截 UI 左上角的返回按钮
         findViewById<Button>(R.id.btnBack).setOnClickListener {
             backPressedCallback.handleOnBackPressed()
         }
-        // =====================================================================
 
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -264,6 +266,23 @@ class GalleryActivity : ComponentActivity() {
             isSelectionMode = false
             updateBatchUI()
         }
+        
+        // ================== 👇 新增：批量删除核心控制器 ==================
+        btnDeleteBatch.setOnClickListener {
+            if (selectedFiles.isEmpty()) return@setOnClickListener
+            val count = selectedFiles.size
+            if (isTrashMode) {
+                selectedFiles.forEach { it.delete() }
+                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
+            } else {
+                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
+                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
+            }
+            // 操作完毕后，退出选择模式，并强制刷新当前列表
+            isSelectionMode = false
+            updateTabsAndLoad(currentType)
+        }
+        // =====================================================================
 
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
@@ -348,7 +367,6 @@ class GalleryActivity : ComponentActivity() {
         }
 
         findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { 
-            // 同样触发拦截逻辑，保持代码行为绝对一致
             backPressedCallback.handleOnBackPressed()
         }
 
