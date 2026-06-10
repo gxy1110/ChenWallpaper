@@ -89,5 +89,5 @@ dependencies {
     androidTestImplementation(Libs.AndroidX.Test.Ext.junit)
     
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
-    implementation("io.coil-kt:coil:2.4.0")
+    implementation("io.coil-kt:coil:2.1.0")
 }
