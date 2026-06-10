@@ -7,7 +7,7 @@ class NetworkManager {
     private val client = OkHttpClient()
     
     // 👇👇👇 极其重要：一定要把这里的网址改成你真实的随机图片API地址！
-    private val API_URL = "https://tpapi.chenchen.shop/" 
+    private val API_URL = "https://tpapi.chenchen.one/" 
 
     // 伪装成 PC 浏览器获取横屏壁纸
     fun fetchLandscapeWallpaper(): ByteArray? {
