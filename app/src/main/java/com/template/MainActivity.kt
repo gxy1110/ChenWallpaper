@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -58,38 +59,86 @@ class MainActivity : ComponentActivity() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         prefsListener.onSharedPreferenceChanged(prefs, "fetch_status_running")
 
-        // ================== 👇 核心突破：黑魔法绕过厂商拦截 ==================
-        // 使用 OpenMultipleDocuments 调取原生底层协议
-        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        // 1. 保留原本的图库选择器 (给手机厂商面子)
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
             if (uris.isNotEmpty()) {
-                Toast.makeText(this, "正在后台批量导入文件...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
                     var count = 0
                     for (uri in uris) {
                         try {
-                            // 1. 由于我们使用了 */* 放行了所有文件，这里必须进行类型嗅探，剔除非图片文件
-                            val mimeType = contentResolver.getType(uri) ?: ""
-                            if (mimeType.startsWith("image/") || mimeType.isEmpty()) {
-                                val inputStream = contentResolver.openInputStream(uri)
+                            val inputStream = contentResolver.openInputStream(uri)
+                            val tempFile = File(cacheDir, "temp_import_${System.currentTimeMillis()}_$count.jpg")
+                            val outputStream = FileOutputStream(tempFile)
+                            inputStream?.copyTo(outputStream)
+                            inputStream?.close()
+                            outputStream.close()
+                            fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
+                            tempFile.delete()
+                            count++
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "成功导入 $count 张本地壁纸！", Toast.LENGTH_LONG).show() }
+                }
+            }
+        }
+
+        // ================== 👇 核心突破：目录树智能递归扫描引擎 ==================
+        val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri != null) {
+                Toast.makeText(this, "正在深度扫描该文件夹及子文件夹，请稍候...", Toast.LENGTH_LONG).show()
+                
+                CoroutineScope(Dispatchers.IO).launch {
+                    val rootDir = DocumentFile.fromTreeUri(this@MainActivity, treeUri)
+                    val imageUris = mutableListOf<android.net.Uri>()
+
+                    // 递归探测算法：穿透所有子文件夹寻找图片
+                    fun scanFolder(dir: DocumentFile) {
+                        dir.listFiles().forEach { file ->
+                            if (file.isDirectory) {
+                                scanFolder(file) // 是文件夹则继续往下钻
+                            } else {
+                                val mime = file.type ?: ""
+                                val name = file.name?.lowercase() ?: ""
+                                // 嗅探文件类型或后缀名
+                                if (mime.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg")) {
+                                    imageUris.add(file.uri)
+                                }
+                            }
+                        }
+                    }
+
+                    if (rootDir != null) {
+                        scanFolder(rootDir)
+                        
+                        if (imageUris.isEmpty()) {
+                            withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "未在该目录内找到任何图片！", Toast.LENGTH_SHORT).show() }
+                            return@launch
+                        }
+
+                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "扫描到 ${imageUris.size} 张图片，正在批量导入...", Toast.LENGTH_SHORT).show() }
+
+                        var count = 0
+                        for (imgUri in imageUris) {
+                            try {
+                                val inputStream = contentResolver.openInputStream(imgUri)
                                 val tempFile = File(cacheDir, "temp_import_${System.currentTimeMillis()}_$count.jpg")
                                 val outputStream = FileOutputStream(tempFile)
                                 inputStream?.copyTo(outputStream)
                                 inputStream?.close()
                                 outputStream.close()
-                                
-                                // 2. 双重保险：使用安卓底层图像引擎检测文件头，如果不是真图片（宽或高<=0），直接拦截
+
+                                // 严格检测图片有效性
                                 val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                                 android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath, opts)
                                 if (opts.outWidth > 0 && opts.outHeight > 0) {
                                     fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
                                     count++
                                 }
-                                tempFile.delete() // 用完立刻粉碎临时文件释放空间
-                            }
-                        } catch (e: Exception) { e.printStackTrace() }
-                    }
-                    withContext(Dispatchers.Main) { 
-                        Toast.makeText(this@MainActivity, "成功过滤并导入 $count 张本地图片！", Toast.LENGTH_LONG).show() 
+                                tempFile.delete()
+                            } catch (e: Exception) { e.printStackTrace() }
+                        }
+                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "成功将 $count 张图片并入您的壁纸图库！", Toast.LENGTH_LONG).show() }
                     }
                 }
             }
@@ -126,9 +175,13 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) })
         }
 
-        // 👇 启动时传入 */* 强制唤起真正的原生文件管理器！
         findViewById<Button>(R.id.btnImport).setOnClickListener { 
-            filePickerLauncher.launch(arrayOf("*/*")) 
+            filePickerLauncher.launch("image/*") 
+        }
+
+        // 👇 触发目录树选择器
+        findViewById<Button>(R.id.btnImportFolder).setOnClickListener {
+            folderPickerLauncher.launch(null)
         }
 
         findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
