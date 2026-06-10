@@ -11,7 +11,8 @@ object FetchManager {
     private val customOkHttpClient = okhttp3.OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val webDavFolderQueue = mutableMapOf<String, MutableList<String>>()
+    // 👇 核心进化：这是你的“元数据结构缓存池”！保存每个网盘下所有扫描到的图片链接
+    private val webDavImageCache = mutableMapOf<String, MutableList<String>>()
 
     fun startFetching(context: Context) {
         if (fetchJob?.isActive == true) return
@@ -22,7 +23,6 @@ object FetchManager {
             var dupCount = 0
             try {
                 while (isActive) {
-                    // 👇 读取分离的目标参数
                     val targetApi = prefs.getInt("target_count_api", 100)
                     val targetDav = prefs.getInt("target_count_webdav", 100)
                     val autoRefresh = prefs.getBoolean("auto_refresh", false)
@@ -56,46 +56,62 @@ object FetchManager {
 
                         if (action == "WEBDAV") {
                             val config = webDavConfigs.random()
-                            val enabledPaths = config.paths.filter { it.isEnabled }
+                            val enabledPaths = config.paths.filter { it.isEnabled }.map { it.path }
                             if (enabledPaths.isNotEmpty()) {
-                                if (webDavFolderQueue[config.id].isNullOrEmpty()) {
-                                    webDavFolderQueue[config.id] = enabledPaths.map { it.path }.toMutableList()
-                                }
                                 
-                                val queue = webDavFolderQueue[config.id]!!
-                                val targetPath = queue.removeAt(0) 
-                                
-                                val items = WebDavManager.listDirectory(config, targetPath)
-                                if (items != null) {
-                                    config.isConnected = true 
-                                    WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
+                                // 👇 如果元数据池空了，开始全自动深度遍历扫描
+                                if (webDavImageCache[config.id].isNullOrEmpty()) {
+                                    val allImages = mutableListOf<String>()
+                                    val folderQueue = enabledPaths.toMutableList()
+                                    var scanDepth = 0
                                     
-                                    val subFolders = items.filter { it.isFolder }.map { it.href }
-                                    queue.addAll(subFolders) 
-                                    
-                                    val images = items.filter { !it.isFolder && (it.name.endsWith(".jpg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".jpeg", true)) }
-                                    if (images.isNotEmpty()) {
-                                        val imgTarget = images.random()
-                                        val bytes = WebDavManager.downloadFile(config, imgTarget.href)
-                                        if (bytes != null) {
-                                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                                            if (opts.outWidth > 0 && opts.outHeight > 0) {
-                                                val type = if (opts.outWidth > opts.outHeight) 5 else 4
-                                                val currentDavPool = fileManager.getWallpapers(type, false, context)
-                                                
-                                                val saved = fileManager.saveWebDavWallpaper(bytes, type, context)
-                                                if (saved != null) {
-                                                    dupCount = 0
-                                                    if (currentDavPool.size >= targetDav && autoRefresh) fileManager.moveToTrash(currentDavPool.random(), type, context)
-                                                } else dupCount++
-                                                performedFetch = true
+                                    // 递归探测，最多下潜 30 个文件夹，防止服务器被扫爆
+                                    while (folderQueue.isNotEmpty() && scanDepth < 30) {
+                                        val targetUrl = folderQueue.removeAt(0)
+                                        val items = WebDavManager.listDirectory(config, targetUrl)
+                                        if (items != null) {
+                                            config.isConnected = true
+                                            items.forEach { item ->
+                                                if (item.isFolder) {
+                                                    folderQueue.add(item.href) // 发现子文件夹，加入待扫队列
+                                                } else {
+                                                    val name = item.name.lowercase()
+                                                    if (name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg")) {
+                                                        allImages.add(item.href) // 发现图片，存入元数据
+                                                    }
+                                                }
                                             }
                                         }
+                                        scanDepth++
                                     }
-                                } else {
-                                    config.isConnected = false
+                                    
+                                    if (allImages.isNotEmpty()) {
+                                        webDavImageCache[config.id] = allImages.shuffled().toMutableList() // 打乱顺序，随机获取
+                                    } else {
+                                        config.isConnected = false // 如果扫完啥也没有，亮红灯
+                                    }
                                     WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
+                                }
+
+                                // 👇 从元数据池里抽一张直接下载，无需再发 PROPFIND 探测包！
+                                val images = webDavImageCache[config.id]
+                                if (!images.isNullOrEmpty()) {
+                                    val imgUrl = images.removeAt(0)
+                                    val bytes = WebDavManager.downloadFile(config, imgUrl)
+                                    if (bytes != null) {
+                                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                                        if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                            val type = if (opts.outWidth > opts.outHeight) 5 else 4
+                                            val currentDavPool = fileManager.getWallpapers(type, false, context)
+                                            val saved = fileManager.saveWebDavWallpaper(bytes, type, context)
+                                            if (saved != null) {
+                                                dupCount = 0
+                                                if (currentDavPool.size >= targetDav && autoRefresh) fileManager.moveToTrash(currentDavPool.random(), type, context)
+                                            } else dupCount++
+                                            performedFetch = true
+                                        }
+                                    }
                                 }
                             }
                         } else {
