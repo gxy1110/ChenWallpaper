@@ -43,7 +43,6 @@ class MainActivity : ComponentActivity() {
         cbCustom.isChecked = prefs.getBoolean("use_custom", false)
         etCustomApi.setText(prefs.getString("custom_api", ""))
 
-        // 👇 修复1：为旧版 Kotlin 编译器显式指定 (SharedPreferences?, String?) 类型，消除推断报错
         val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs: SharedPreferences?, key: String? ->
             if (key == "fetch_status_running") {
                 val isRunning = sharedPrefs?.getBoolean(key, false) ?: false
@@ -59,31 +58,43 @@ class MainActivity : ComponentActivity() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         prefsListener.onSharedPreferenceChanged(prefs, "fetch_status_running")
 
-        // 👇 修复2：改用 GetMultipleContents 接口，唤起厂商原生相册/图库实现高效多选
-        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        // ================== 👇 核心突破：黑魔法绕过厂商拦截 ==================
+        // 使用 OpenMultipleDocuments 调取原生底层协议
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             if (uris.isNotEmpty()) {
-                Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在后台批量导入文件...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
                     var count = 0
                     for (uri in uris) {
                         try {
-                            val inputStream = contentResolver.openInputStream(uri)
-                            val tempFile = File(cacheDir, "temp_import_${System.currentTimeMillis()}_$count.jpg")
-                            val outputStream = FileOutputStream(tempFile)
-                            inputStream?.copyTo(outputStream)
-                            inputStream?.close()
-                            outputStream.close()
-                            fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
-                            tempFile.delete()
-                            count++
+                            // 1. 由于我们使用了 */* 放行了所有文件，这里必须进行类型嗅探，剔除非图片文件
+                            val mimeType = contentResolver.getType(uri) ?: ""
+                            if (mimeType.startsWith("image/") || mimeType.isEmpty()) {
+                                val inputStream = contentResolver.openInputStream(uri)
+                                val tempFile = File(cacheDir, "temp_import_${System.currentTimeMillis()}_$count.jpg")
+                                val outputStream = FileOutputStream(tempFile)
+                                inputStream?.copyTo(outputStream)
+                                inputStream?.close()
+                                outputStream.close()
+                                
+                                // 2. 双重保险：使用安卓底层图像引擎检测文件头，如果不是真图片（宽或高<=0），直接拦截
+                                val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath, opts)
+                                if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                    fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
+                                    count++
+                                }
+                                tempFile.delete() // 用完立刻粉碎临时文件释放空间
+                            }
                         } catch (e: Exception) { e.printStackTrace() }
                     }
                     withContext(Dispatchers.Main) { 
-                        Toast.makeText(this@MainActivity, "成功导入 $count 张本地壁纸！", Toast.LENGTH_LONG).show() 
+                        Toast.makeText(this@MainActivity, "成功过滤并导入 $count 张本地图片！", Toast.LENGTH_LONG).show() 
                     }
                 }
             }
         }
+        // =====================================================================
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
             startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) })
@@ -115,9 +126,9 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) })
         }
 
-        // 仅过滤显示图片文件
+        // 👇 启动时传入 */* 强制唤起真正的原生文件管理器！
         findViewById<Button>(R.id.btnImport).setOnClickListener { 
-            filePickerLauncher.launch("image/*") 
+            filePickerLauncher.launch(arrayOf("*/*")) 
         }
 
         findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
