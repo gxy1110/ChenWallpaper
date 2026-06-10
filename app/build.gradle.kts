@@ -72,7 +72,6 @@ android {
         kotlinCompilerExtensionVersion = Libs.AndroidX.Compose.version
     }
 }
-
 dependencies {
     implementation(Libs.Kotlin.stdlib)
 
@@ -91,4 +90,7 @@ dependencies {
     androidTestImplementation(Libs.AndroidX.Test.Ext.junit)
     
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
+    
+    // 👇 补上这行被我遗漏的 Coil 图片加载库依赖！
+    implementation("io.coil-kt:coil:2.4.0")
 }
