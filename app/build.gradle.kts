@@ -5,9 +5,9 @@ plugins {
 }
 
 android {
-    compileSdk = Libs.App.compileSdkVersion
+    // 👇 1. 强制升级编译版本到 34 (Android 14)
+    compileSdk = 34
 
-    // 👇 1. 新增：我们的专属钛合金防盗门锁配置
     signingConfigs {
         create("release") {
             storeFile = file("chen.keystore")
@@ -18,10 +18,10 @@ android {
     }
 
     defaultConfig {
-        // 👇 2. 恢复为你专属的包名
         applicationId = "com.chenchen.wallpaper"
         minSdk = Libs.App.minSdkVersion
-        targetSdk = Libs.App.targetSdkVersion
+        // 👇 2. 强制升级目标版本到 34 (Android 14)
+        targetSdk = 34
         versionCode = ReleaseConfig.appVersionCode
         versionName = ReleaseConfig.appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -35,7 +35,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 👇 3. 给正式版打上钢印
             signingConfig = signingConfigs.getByName("release")
         }
         getByName("debug") {
@@ -44,7 +43,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 👇 4. 给测试版也打上钢印
             signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -72,6 +70,7 @@ android {
         kotlinCompilerExtensionVersion = Libs.AndroidX.Compose.version
     }
 }
+
 dependencies {
     implementation(Libs.Kotlin.stdlib)
 
@@ -90,7 +89,5 @@ dependencies {
     androidTestImplementation(Libs.AndroidX.Test.Ext.junit)
     
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
-    
-    // 👇 补上这行被我遗漏的 Coil 图片加载库依赖！
     implementation("io.coil-kt:coil:2.4.0")
 }
