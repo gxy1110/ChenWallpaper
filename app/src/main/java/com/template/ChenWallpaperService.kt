@@ -16,7 +16,9 @@ class ChenWallpaperService : WallpaperService() {
 
     inner class ChenEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
         private val fileManager = FileManager()
-        private val networkManager = NetworkManager()
+        private val networkManager = NetworkManager() // 原生内置源管理器
+        private val customOkHttpClient = okhttp3.OkHttpClient() // 专属自定义API网络客户端
+        
         private val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         
         private var displayJob: Job? = null
@@ -57,9 +59,10 @@ class ChenWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == "interval") startDisplayLoop()
+            // 如果多源配置被修改，立刻重启抓取循环以应用新策略
+            if (key in listOf("use_builtin", "use_custom", "custom_port_api", "custom_land_api")) startFetchLoop()
         }
 
-        // --- 核心一：显示引擎 ---
         private fun startDisplayLoop() {
             displayJob?.cancel()
             displayJob = engineScope.launch {
@@ -72,7 +75,15 @@ class ChenWallpaperService : WallpaperService() {
             }
         }
 
-        // --- 核心二：智能网络抓取引擎 (1秒限流 + 自动替换机制) ---
+        // ================== 👇 核心：多源并发与负载均衡抓取引擎 ==================
+        private fun fetchFromCustom(url: String): ByteArray? {
+            if (url.isBlank()) return null
+            return try {
+                val req = okhttp3.Request.Builder().url(url).build()
+                customOkHttpClient.newCall(req).execute().body?.bytes()
+            } catch (e: Exception) { null }
+        }
+
         private fun startFetchLoop() {
             fetchJob?.cancel()
             fetchJob = engineScope.launch {
@@ -82,56 +93,70 @@ class ChenWallpaperService : WallpaperService() {
                 while (isActive) {
                     val target = prefs.getInt("target_count", 100)
                     val autoRefresh = prefs.getBoolean("auto_refresh", false)
+                    
+                    val useBuiltIn = prefs.getBoolean("use_builtin", true)
+                    val useCustom = prefs.getBoolean("use_custom", false)
+                    val customPortApi = prefs.getString("custom_port_api", "") ?: ""
+                    val customLandApi = prefs.getString("custom_land_api", "") ?: ""
 
                     val ports = fileManager.getWallpapers(0, false, applicationContext)
                     val lands = fileManager.getWallpapers(1, false, applicationContext)
 
                     var performedFetch = false
 
-                    // 抓取竖屏
-                    if (ports.size < target || (ports.size >= target && autoRefresh)) {
-                        val bytes = networkManager.fetchPortraitWallpaper()
+                    // 1. 组装可用的竖屏数据源 (0 = 内置, 1 = 自定义)
+                    val srcPorts = mutableListOf<Int>()
+                    if (useBuiltIn) srcPorts.add(0)
+                    if (useCustom && customPortApi.isNotBlank()) srcPorts.add(1)
+
+                    // 竖屏轮询抓取
+                    if (srcPorts.isNotEmpty() && (ports.size < target || (ports.size >= target && autoRefresh))) {
+                        val src = srcPorts.random() // 负载均衡：多选时随机决定本次走哪个API
+                        val bytes = if (src == 0) networkManager.fetchPortraitWallpaper() else fetchFromCustom(customPortApi)
+                        
                         if (bytes != null) {
                             val newFile = fileManager.saveNetworkWallpaper(bytes, 0, applicationContext)
                             if (newFile != null) {
-                                dupPort = 0 // 成功获取，重置重复计数器
-                                // 如果是自动刷新替换，随机丢一张旧图进回收站
+                                dupPort = 0 
                                 if (ports.size >= target && autoRefresh) fileManager.moveToTrash(ports.random(), 0, applicationContext)
-                            } else {
-                                dupPort++
-                            }
+                            } else dupPort++
                             performedFetch = true
                         }
                     }
 
-                    // 抓取横屏
-                    if (lands.size < target || (lands.size >= target && autoRefresh)) {
-                        val bytes = networkManager.fetchLandscapeWallpaper()
+                    // 2. 组装可用的横屏数据源
+                    val srcLands = mutableListOf<Int>()
+                    if (useBuiltIn) srcLands.add(0)
+                    if (useCustom && customLandApi.isNotBlank()) srcLands.add(1)
+
+                    // 横屏轮询抓取
+                    if (srcLands.isNotEmpty() && (lands.size < target || (lands.size >= target && autoRefresh))) {
+                        val src = srcLands.random()
+                        val bytes = if (src == 0) networkManager.fetchLandscapeWallpaper() else fetchFromCustom(customLandApi)
+                        
                         if (bytes != null) {
                             val newFile = fileManager.saveNetworkWallpaper(bytes, 1, applicationContext)
                             if (newFile != null) {
                                 dupLand = 0
                                 if (lands.size >= target && autoRefresh) fileManager.moveToTrash(lands.random(), 1, applicationContext)
-                            } else {
-                                dupLand++
-                            }
+                            } else dupLand++
                             performedFetch = true
                         }
                     }
 
-                    // 智能延迟策略：
-                    // 如果连续3次拿到重复图片，说明 API 库见底了，强行休眠 10 秒跳过；否则严格执行 1 秒间隔。
+                    // 智能限流与避退策略
                     if (dupPort >= 3 && dupLand >= 3) {
                         dupPort = 0; dupLand = 0
-                        delay(10000L) 
+                        delay(10000L) // API 见底，进入长休眠
                     } else if (performedFetch) {
-                        delay(1000L) // 严格遵循 API 的 1 秒规则
+                        delay(1000L) // 严格遵循 API 1 秒访问规范
                     } else {
-                        delay(3000L) // 无需抓取时的空闲探测
+                        delay(3000L) // 数据满额且未开启自动刷新，降低巡检频率节约电量
                     }
                 }
             }
         }
+        // =====================================================================
 
         private fun loadNewPairIntoMemory() {
             val ports = fileManager.getWallpapers(0, false, applicationContext) + fileManager.getWallpapers(2, false, applicationContext)
