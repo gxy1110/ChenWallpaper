@@ -21,6 +21,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private lateinit var webDavContainer: LinearLayout
@@ -129,9 +132,21 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        findViewById<Button>(R.id.btnStartService).setOnClickListener {
-            startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) })
+        // 👇 核心升级 1：原生 .log 文件导出生成器
+        val exportLogLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+            if (uri != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        contentResolver.openOutputStream(uri)?.use { out ->
+                            out.write(LogManager.getLogs().toByteArray())
+                        }
+                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "日志已成功保存为 .log 文件！", Toast.LENGTH_LONG).show() }
+                    } catch (e: Exception) { e.printStackTrace() }
+                }
+            }
         }
+
+        findViewById<Button>(R.id.btnStartService).setOnClickListener { startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) }) }
         findViewById<Button>(R.id.btnStartFetch).setOnClickListener {
             prefs.edit().putBoolean("is_fetching_enabled", true).apply()
             FetchManager.startFetching(this)
@@ -151,9 +166,10 @@ class MainActivity : ComponentActivity() {
             val tv = TextView(this).apply { text = LogManager.getLogs(); setPadding(40,40,40,40); setTextColor(Color.BLACK) }
             val sv = ScrollView(this).apply { addView(tv) }
             AlertDialog.Builder(this).setTitle("底层运行日志 (最新1000条)").setView(sv)
-                .setPositiveButton("外部导出") { _, _ -> 
-                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, LogManager.getLogs()) }
-                    startActivity(Intent.createChooser(intent, "导出日志"))
+                .setPositiveButton("导出为 .log 文件") { _, _ -> 
+                    // 调用保存文件框架
+                    val timeTag = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                    exportLogLauncher.launch("ChenWall_Log_$timeTag.log")
                 }
                 .setNeutralButton("清空日志") { _, _ -> LogManager.clearLogs(); Toast.makeText(this, "面板日志已清空", Toast.LENGTH_SHORT).show() }
                 .setNegativeButton("关闭", null).show()
@@ -165,28 +181,30 @@ class MainActivity : ComponentActivity() {
                 .setNegativeButton("取消", null).show()
         }
 
-        // 👇 核心一键保存事务
         findViewById<Button>(R.id.btnSaveAll).setOnClickListener {
-            val apiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
-            val davTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
+            val oldApiTarget = prefs.getInt("target_count_api", 100)
+            val oldDavTarget = prefs.getInt("target_count_webdav", 100)
+            val newApiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
+            val newDavTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
+            
+            // 👇 核心升级 2：精准记录每一次保存时的容量变动意图
+            LogManager.i("Config", "保存全局配置 | API保留额度: $oldApiTarget -> $newApiTarget | WebDAV额度: $oldDavTarget -> $newDavTarget")
             
             prefs.edit()
                 .putInt("interval", if (etInterval.text.isNotEmpty()) etInterval.text.toString().toInt() else 10)
                 .putBoolean("use_builtin", cbBuiltIn.isChecked)
                 .putBoolean("use_custom", cbCustom.isChecked)
                 .putString("custom_api", etCustomApi.text.toString().trim())
-                .putInt("target_count_api", apiTarget)
-                .putInt("target_count_webdav", davTarget)
+                .putInt("target_count_api", newApiTarget)
+                .putInt("target_count_webdav", newDavTarget)
                 .apply()
                 
-            fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
+            fileManager.shrinkNetworkCache(newApiTarget, newDavTarget, this)
             
-            // 如果引擎正在运行，自动重启它以应用新的并发配置
             if (prefs.getBoolean("is_fetching_enabled", false)) {
                 FetchManager.stopFetching(this)
                 FetchManager.startFetching(this)
             }
-            
             Toast.makeText(this, "所有配置已保存并生效！", Toast.LENGTH_SHORT).show()
         }
         
@@ -217,7 +235,12 @@ class MainActivity : ComponentActivity() {
             val tvStatus = TextView(this).apply { text = if(config.isConnected) "🟢" else "🔴"; setPadding(0,0,16,0) }
             
             val cbEnable = CheckBox(this).apply { isChecked = config.isEnabled }
-            cbEnable.setOnCheckedChangeListener { _, isChecked -> config.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
+            cbEnable.setOnCheckedChangeListener { _, isChecked -> 
+                config.isEnabled = isChecked
+                // 👇 核心升级 3：WebDAV 总开关的独立日志监听
+                LogManager.i("WebDAV", "节点 [${config.name}] 已${if(isChecked) "启用" else "停用"}")
+                WebDavManager.saveConfigs(this, configs) 
+            }
 
             val btnEdit = Button(this).apply { 
                 text = "编辑"
@@ -262,7 +285,11 @@ class MainActivity : ComponentActivity() {
                 }
                 
                 val pCb = CheckBox(this).apply { isChecked = p.isEnabled }
-                pCb.setOnCheckedChangeListener { _, isChecked -> p.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
+                pCb.setOnCheckedChangeListener { _, isChecked -> 
+                    p.isEnabled = isChecked
+                    LogManager.i("WebDAV", "节点 [${config.name}] 子路径 [$decodedPath] 已${if(isChecked) "勾选获取" else "取消获取"}")
+                    WebDavManager.saveConfigs(this, configs) 
+                }
                 
                 val pEditBtn = Button(this).apply { 
                     text = "📝"
