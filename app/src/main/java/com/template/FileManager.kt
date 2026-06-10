@@ -6,6 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 
 class FileManager {
+    // 0: NetPort, 1: NetLand, 2: LocPort, 3: LocLand, 4: DavPort, 5: DavLand
 
     private fun calculateMD5(bytes: ByteArray): String {
         val md = MessageDigest.getInstance("MD5")
@@ -14,10 +15,9 @@ class FileManager {
 
     private fun getDir(context: Context, type: Int, isTrash: Boolean): File {
         val base = when (type) {
-            0 -> "net_port"
-            1 -> "net_land"
-            2 -> "local_port"
-            else -> "local_land"
+            0 -> "net_port"; 1 -> "net_land"
+            2 -> "local_port"; 3 -> "local_land"
+            4 -> "dav_port"; else -> "dav_land"
         }
         val folderName = if (isTrash) "trash_$base" else base
         val dir = File(context.filesDir, folderName)
@@ -29,24 +29,22 @@ class FileManager {
         return getDir(context, type, isTrash).listFiles()?.toList() ?: emptyList()
     }
 
+    // 阶级一：图源 API (最高权限，碾碎本地和 WebDAV 相同图)
     fun saveNetworkWallpaper(bytes: ByteArray, type: Int, context: Context): File? {
         val md5 = calculateMD5(bytes)
-        val dir = getDir(context, type, false)
-        val file = File(dir, "$md5.jpg")
+        val file = File(getDir(context, type, false), "$md5.jpg")
         if (file.exists()) return null 
 
-        // 👇 核心机制：霸道清洗。网络图片入库前，巡查本地文件夹。如果有一样的图，立刻物理删除本地图！
-        val localPortFile = File(getDir(context, 2, false), "$md5.jpg")
-        if (localPortFile.exists()) localPortFile.delete()
-        
-        val localLandFile = File(getDir(context, 3, false), "$md5.jpg")
-        if (localLandFile.exists()) localLandFile.delete()
-
+        // 强权清洗：碾碎 2,3(本地) 和 4,5(WebDAV)
+        for (i in 2..5) {
+            val target = File(getDir(context, i, false), "$md5.jpg")
+            if (target.exists()) target.delete()
+        }
         file.writeBytes(bytes)
         return file
     }
 
-    // 👇 修改返回值为 Boolean，告知外部该文件是否真的被导入了
+    // 阶级二：本地导入 (中等权限，避让 API，碾碎 WebDAV)
     fun importLocalImage(filePath: String, context: Context): Boolean {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(filePath, options)
@@ -57,21 +55,36 @@ class FileManager {
             val bytes = localFile.readBytes()
             val md5 = calculateMD5(bytes)
             
-            // 👇 核心机制：网络优先。如果要导入的图已经存在于网络图库中，则默默拒绝导入
-            val netPortFile = File(getDir(context, 0, false), "$md5.jpg")
-            val netLandFile = File(getDir(context, 1, false), "$md5.jpg")
-            if (netPortFile.exists() || netLandFile.exists()) {
-                return false
-            }
+            // 避让高层
+            if (File(getDir(context, 0, false), "$md5.jpg").exists() || File(getDir(context, 1, false), "$md5.jpg").exists()) return false
+
+            // 碾碎底层 WebDAV
+            val targetDavPort = File(getDir(context, 4, false), "$md5.jpg")
+            val targetDavLand = File(getDir(context, 5, false), "$md5.jpg")
+            if (targetDavPort.exists()) targetDavPort.delete()
+            if (targetDavLand.exists()) targetDavLand.delete()
 
             val type = if (isLandscape) 3 else 2
             val file = File(getDir(context, type, false), "$md5.jpg")
             if (!file.exists()) {
                 file.writeBytes(bytes)
-                return true // 只有全新且未与网络撞车的图，才返回 true
+                return true
             }
         }
         return false
+    }
+
+    // 阶级三：WebDAV (底层，任何高层有此图均乖乖拒收)
+    fun saveWebDavWallpaper(bytes: ByteArray, type: Int, context: Context): File? {
+        val md5 = calculateMD5(bytes)
+        // 避让 0,1,2,3
+        for (i in 0..3) {
+            if (File(getDir(context, i, false), "$md5.jpg").exists()) return null
+        }
+        val file = File(getDir(context, type, false), "$md5.jpg")
+        if (file.exists()) return null
+        file.writeBytes(bytes)
+        return file
     }
 
     fun moveToTrash(file: File, type: Int, context: Context) {
@@ -85,7 +98,8 @@ class FileManager {
     }
 
     fun shrinkNetworkCache(targetCount: Int, context: Context) {
-        listOf(0, 1).forEach { type ->
+        // 对 API (0,1) 和 WebDAV (4,5) 都执行容量收缩
+        listOf(0, 1, 4, 5).forEach { type ->
             val files = getWallpapers(type, false, context).shuffled()
             if (files.size > targetCount) {
                 files.take(files.size - targetCount).forEach { moveToTrash(it, type, context) }
