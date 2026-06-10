@@ -14,7 +14,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="40dp"
+            android:layout_marginBottom="32dp"
             android:text="尘尘的壁纸屋"
             android:textColor="#2196F3"
             android:textSize="36sp"
@@ -24,19 +24,48 @@
             android:id="@+id/btnStartService"
             android:layout_width="match_parent"
             android:layout_height="64dp"
-            android:layout_marginBottom="16dp"
-            android:text="🚀 启动动态引擎"
+            android:layout_marginBottom="24dp"
+            android:text="🚀 启动壁纸显示引擎"
             android:textSize="18sp" />
 
-        <Button
-            android:id="@+id/btnManualUpdate"
+        <TextView
+            android:id="@+id/tvFetchStatus"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:layout_marginBottom="16dp"
-            android:backgroundTint="#8BC34A"
-            android:text="🔄 立即从选定源抓取"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp" />
+            android:layout_height="wrap_content"
+            android:text="🔴 获取状态：未运行"
+            android:textColor="#F44336"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/btnStartFetch"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="▶️ 启动获取"
+                android:backgroundTint="#8BC34A"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnStopFetch"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="⏸️ 停止获取"
+                android:backgroundTint="#F44336"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnGallery"
@@ -93,14 +122,10 @@
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="高级设置：多源API配置" android:textStyle="bold" android:layout_marginBottom="8dp"/>
         
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="#FFFFFF" android:padding="16dp" android:layout_marginBottom="32dp">
-            
             <CheckBox android:id="@+id/cbBuiltIn" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="内置核心图源 (默认开启)" android:checked="true" />
             <CheckBox android:id="@+id/cbCustom" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自定义 API 扩展图源" />
 
-            <EditText android:id="@+id/etCustomPortApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义竖屏 API (http...)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp" android:layout_marginTop="8dp"/>
-            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0"/>
-            
-            <EditText android:id="@+id/etCustomLandApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义横屏 API (http...)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp"/>
+            <EditText android:id="@+id/etCustomApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义 API (http...系统将自动检测分类)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp" android:layout_marginTop="8dp"/>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0" android:layout_marginBottom="16dp"/>
 
             <Button android:id="@+id/btnSaveApiSettings" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="💾 保存 API 设置" android:backgroundTint="#2196F3" android:textColor="#FFFFFF" />
