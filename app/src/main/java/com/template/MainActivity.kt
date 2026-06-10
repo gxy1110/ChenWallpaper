@@ -32,20 +32,24 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
 
         val etInterval = findViewById<EditText>(R.id.etInterval)
-        val etTarget = findViewById<EditText>(R.id.etTarget)
         val swAutoRefresh = findViewById<Switch>(R.id.swAutoRefresh)
+        
         val cbBuiltIn = findViewById<CheckBox>(R.id.cbBuiltIn)
         val cbCustom = findViewById<CheckBox>(R.id.cbCustom)
         val etCustomApi = findViewById<EditText>(R.id.etCustomApi)
+        val etTargetApi = findViewById<EditText>(R.id.etTargetApi)
+        val etTargetWebDav = findViewById<EditText>(R.id.etTargetWebDav)
+        
         val tvFetchStatus = findViewById<TextView>(R.id.tvFetchStatus)
         webDavContainer = findViewById(R.id.webDavContainer)
 
         etInterval.setText(prefs.getInt("interval", 10).toString())
-        etTarget.setText(prefs.getInt("target_count", 100).toString())
         swAutoRefresh.isChecked = prefs.getBoolean("auto_refresh", false)
         cbBuiltIn.isChecked = prefs.getBoolean("use_builtin", true)
         cbCustom.isChecked = prefs.getBoolean("use_custom", false)
         etCustomApi.setText(prefs.getString("custom_api", ""))
+        etTargetApi.setText(prefs.getInt("target_count_api", 100).toString())
+        etTargetWebDav.setText(prefs.getInt("target_count_webdav", 100).toString())
 
         val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs: SharedPreferences?, key: String? ->
             if (key == "fetch_status_running") {
@@ -143,21 +147,32 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.btnTrash).setOnClickListener { startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) }) }
         findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch("image/*") }
         findViewById<Button>(R.id.btnImportFolder).setOnClickListener { folderPickerLauncher.launch(null) }
+        
         findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
-            prefs.edit().putBoolean("use_builtin", cbBuiltIn.isChecked).putBoolean("use_custom", cbCustom.isChecked).putString("custom_api", etCustomApi.text.toString().trim()).apply()
-            Toast.makeText(this, "API 设置已保存", Toast.LENGTH_SHORT).show()
+            val apiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
+            prefs.edit()
+                .putBoolean("use_builtin", cbBuiltIn.isChecked)
+                .putBoolean("use_custom", cbCustom.isChecked)
+                .putString("custom_api", etCustomApi.text.toString().trim())
+                .putInt("target_count_api", apiTarget)
+                .apply()
+            val davTarget = prefs.getInt("target_count_webdav", 100)
+            fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
+            Toast.makeText(this, "API 设置及保留张数已保存", Toast.LENGTH_SHORT).show()
         }
+        
+        findViewById<Button>(R.id.btnSaveTargetWebDav).setOnClickListener {
+            val davTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
+            prefs.edit().putInt("target_count_webdav", davTarget).apply()
+            val apiTarget = prefs.getInt("target_count_api", 100)
+            fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
+            Toast.makeText(this, "云盘保留张数已生效", Toast.LENGTH_SHORT).show()
+        }
+
         findViewById<Button>(R.id.btnSaveInterval).setOnClickListener {
             if (etInterval.text.isNotEmpty()) { prefs.edit().putInt("interval", etInterval.text.toString().toInt()).apply(); Toast.makeText(this, "时间已生效", Toast.LENGTH_SHORT).show() }
         }
-        findViewById<Button>(R.id.btnSaveTarget).setOnClickListener {
-            if (etTarget.text.isNotEmpty()) {
-                val t = etTarget.text.toString().toInt()
-                prefs.edit().putInt("target_count", t).apply()
-                fileManager.shrinkNetworkCache(t, this)
-                Toast.makeText(this, "目标张数已生效", Toast.LENGTH_SHORT).show()
-            }
-        }
+        
         swAutoRefresh.setOnCheckedChangeListener { _, isChecked -> prefs.edit().putBoolean("auto_refresh", isChecked).apply() }
 
         findViewById<Button>(R.id.btnAddWebDav).setOnClickListener { showAddWebDavDialog() }
@@ -174,7 +189,6 @@ class MainActivity : ComponentActivity() {
             lp.setMargins(0, 0, 0, 16)
             rootCard.layoutParams = lp
 
-            // 👇 核心修复 1：扩大点击范围，整个头部加上 Padding，并接管全局点击事件
             val header = LinearLayout(this).apply { 
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -191,31 +205,26 @@ class MainActivity : ComponentActivity() {
                 WebDavManager.saveConfigs(this, configs)
             }
 
-            // 👇 核心修复 2：加入独立的编辑按钮
             val btnEdit = Button(this).apply { 
                 text = "编辑"
                 setBackgroundColor(Color.parseColor("#FF9800"))
                 setTextColor(Color.WHITE)
-                minimumHeight = 0
-                minimumWidth = 0
+                minimumHeight = 0; minimumWidth = 0
                 setPadding(24, 16, 24, 16)
                 textSize = 14f
             }
-            val editLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
-            btnEdit.layoutParams = editLp
+            btnEdit.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
             btnEdit.setOnClickListener { showEditWebDavDialog(config, configs) }
 
             val btnDelete = Button(this).apply { 
                 text = "删除"
                 setBackgroundColor(Color.parseColor("#F44336"))
                 setTextColor(Color.WHITE)
-                minimumHeight = 0
-                minimumWidth = 0
+                minimumHeight = 0; minimumWidth = 0
                 setPadding(24, 16, 24, 16)
                 textSize = 14f
             }
-            val delLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            btnDelete.layoutParams = delLp
+            btnDelete.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             btnDelete.setOnClickListener {
                 WebDavManager.saveConfigs(this, configs.filter { it.id != config.id })
                 renderWebDavList()
@@ -225,22 +234,49 @@ class MainActivity : ComponentActivity() {
             rootCard.addView(header)
 
             val pathContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 16, 0, 0); visibility = View.GONE }
+            
             config.paths.forEach { p ->
                 val pRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
-                val pText = TextView(this).apply { text = "📂 ${java.net.URLDecoder.decode(p.path.substringAfterLast('/'), "UTF-8").ifEmpty { "/" }}"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+                
+                // 👇 核心修复 1：完美解析完整路径名，即使路径再深也不会丢失。并确保显示时加上前面的 /
+                val relativePath = java.net.URLDecoder.decode(p.path.removePrefix(config.url).let { if (it.startsWith("/")) it else "/$it" }, "UTF-8")
+                
+                val pText = TextView(this).apply { 
+                    text = "📂 $relativePath"
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) 
+                }
+                
                 val pCb = CheckBox(this).apply { isChecked = p.isEnabled }
                 pCb.setOnCheckedChangeListener { _, isChecked -> p.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
                 
+                // 👇 核心修复 2：加入独立的针对这条路径的“修改路径”按钮
+                val pEditBtn = Button(this).apply { 
+                    text = "📝"
+                    setBackgroundColor(Color.parseColor("#2196F3"))
+                    setTextColor(Color.WHITE)
+                    minimumHeight = 0; minimumWidth = 0
+                    setPadding(24, 16, 24, 16)
+                }
+                pEditBtn.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
+                pEditBtn.setOnClickListener {
+                    val etPath = EditText(this@MainActivity).apply { setText(p.path) }
+                    AlertDialog.Builder(this@MainActivity).setTitle("手工修改完整抓取路径").setView(etPath).setPositiveButton("保存") { _, _ ->
+                        p.path = etPath.text.toString().trim()
+                        WebDavManager.saveConfigs(this@MainActivity, configs)
+                        renderWebDavList()
+                    }.setNegativeButton("取消", null).show()
+                }
+
                 val pDel = Button(this).apply { 
                     text = "X"
                     setBackgroundColor(Color.parseColor("#9E9E9E"))
                     setTextColor(Color.WHITE)
-                    minimumHeight = 0
-                    minimumWidth = 0
+                    minimumHeight = 0; minimumWidth = 0
                     setPadding(24, 16, 24, 16)
                 }
                 pDel.setOnClickListener { config.paths.remove(p); WebDavManager.saveConfigs(this, configs); renderWebDavList() }
-                pRow.addView(pText); pRow.addView(pCb); pRow.addView(pDel)
+                
+                pRow.addView(pText); pRow.addView(pCb); pRow.addView(pEditBtn); pRow.addView(pDel)
                 pathContainer.addView(pRow)
             }
 
@@ -253,10 +289,7 @@ class MainActivity : ComponentActivity() {
             btnAddPath.setOnClickListener { showWebDavBrowser(config, configs) }
             pathContainer.addView(btnAddPath)
             
-            // 只要点击这一整行（除了按钮的地方），就会立刻弹开底部的抽屉
-            header.setOnClickListener { 
-                pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE 
-            }
+            header.setOnClickListener { pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
 
             rootCard.addView(pathContainer)
             webDavContainer.addView(rootCard)
@@ -283,7 +316,6 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton("取消", null).show()
     }
 
-    // 👇 核心修复 3：全新的编辑逻辑，修改后会自动重置红绿灯状态要求重新检测
     private fun showEditWebDavDialog(config: WebDavConfig, configs: List<WebDavConfig>) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 32, 48, 32) }
         val etName = EditText(this).apply { hint = "名称 (如: 尘尘的webdav)"; setText(config.name) }
@@ -304,9 +336,7 @@ class MainActivity : ComponentActivity() {
                 config.url = if(newUrl.endsWith("/")) newUrl else "$newUrl/"
                 config.user = etUser.text.toString().trim()
                 config.pass = etPass.text.toString().trim()
-                
-                config.isConnected = false // 配置已变，重置为红灯等待管家检测
-                
+                config.isConnected = false 
                 WebDavManager.saveConfigs(this, configs)
                 renderWebDavList()
             }
@@ -326,14 +356,15 @@ class MainActivity : ComponentActivity() {
         layout.addView(tvPath); layout.addView(listView)
 
         val dialog = AlertDialog.Builder(this).setTitle("浏览网络文件夹").setView(layout).setPositiveButton("选择当前目录") { _, _ ->
-            if (!config.paths.any { it.path == currentUrl }) config.paths.add(WebDavPath(currentUrl))
+            // 👇 核心修复 3：不再阻止添加多条子路径
+            config.paths.add(WebDavPath(currentUrl))
             WebDavManager.saveConfigs(this, configs)
             renderWebDavList()
             Toast.makeText(this, "已添加抓取路径！", Toast.LENGTH_SHORT).show()
         }.setNegativeButton("取消", null).show()
 
         fun loadUrl(url: String) {
-            tvPath.text = "当前: " + java.net.URLDecoder.decode(url.removePrefix(config.url), "UTF-8").ifEmpty { "/" }
+            tvPath.text = "当前: " + java.net.URLDecoder.decode(url.removePrefix(config.url).let { if (it.startsWith("/")) it else "/$it" }, "UTF-8")
             CoroutineScope(Dispatchers.IO).launch {
                 val items = WebDavManager.listDirectory(config, url)
                 withContext(Dispatchers.Main) {
