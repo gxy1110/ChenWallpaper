@@ -11,7 +11,6 @@ import org.json.JSONObject
 import java.net.URI
 import java.util.UUID
 
-// 👇 修复：将 path 修改为 var，允许修改路径
 data class WebDavPath(var path: String, var isEnabled: Boolean = true)
 
 data class WebDavConfig(
@@ -86,9 +85,12 @@ object WebDavManager {
 
     fun listDirectory(config: WebDavConfig, targetUrl: String): List<WebDavItem>? {
         try {
+            // 👇 核心修复 1：严格保证 PROPFIND 请求目标以斜杠结尾，否则 Alist 等服务器会报 301/405 错误！
+            val safeUrl = if (targetUrl.endsWith("/")) targetUrl else "$targetUrl/"
+            
             val auth = if (config.user.isNotEmpty()) "Basic " + Base64.encodeToString("${config.user}:${config.pass}".toByteArray(), Base64.NO_WRAP) else ""
             val xml = """<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>"""
-            val reqBuilder = Request.Builder().url(targetUrl).method("PROPFIND", xml.toRequestBody("application/xml".toMediaType())).header("Depth", "1")
+            val reqBuilder = Request.Builder().url(safeUrl).method("PROPFIND", xml.toRequestBody("application/xml".toMediaType())).header("Depth", "1")
             if (auth.isNotEmpty()) reqBuilder.header("Authorization", auth)
             
             val resp = client.newCall(reqBuilder.build()).execute()
@@ -101,10 +103,11 @@ object WebDavManager {
             val baseUri = URI(config.url)
             for (block in blocks) {
                 val hrefMatch = Regex("<[a-zA-Z0-9:]*href>([^<]+)</", RegexOption.IGNORE_CASE).find(block)
-                var href = hrefMatch?.groupValues?.get(1) ?: continue
+                var href = hrefMatch?.groupValues?.get(1)?.trim() ?: continue
                 if (!href.startsWith("http")) href = baseUri.resolve(href).toString()
                 
-                if (href.trimEnd('/') == targetUrl.trimEnd('/')) continue
+                // 去除自身目录的重复返回
+                if (href.trimEnd('/') == safeUrl.trimEnd('/')) continue
                 
                 val isFolder = block.contains("collection/>", true) || block.contains("collection></", true) || href.endsWith("/")
                 val name = href.trimEnd('/').substringAfterLast('/')
