@@ -76,14 +76,28 @@ class FileManager {
         file.renameTo(File(activeDir, file.name))
     }
 
+    // 👇 核心升级 5：在容量清理时进行日志播报
     fun shrinkNetworkCache(apiTarget: Int, davTarget: Int, context: Context) {
+        var apiCleaned = 0
         listOf(0, 1).forEach { type ->
             val files = getWallpapers(type, false, context).shuffled()
-            if (files.size > apiTarget) files.take(files.size - apiTarget).forEach { moveToTrash(it, type, context) }
+            if (files.size > apiTarget) {
+                val toRemove = files.take(files.size - apiTarget)
+                toRemove.forEach { moveToTrash(it, type, context) }
+                apiCleaned += toRemove.size
+            }
         }
+        if (apiCleaned > 0) LogManager.i("Engine", "因 API 额度下调，已将 $apiCleaned 张多余图片移至回收站。")
+
+        var davCleaned = 0
         listOf(4, 5).forEach { type ->
             val files = getWallpapers(type, false, context).shuffled()
-            if (files.size > davTarget) files.take(files.size - davTarget).forEach { moveToTrash(it, type, context) }
+            if (files.size > davTarget) {
+                val toRemove = files.take(files.size - davTarget)
+                toRemove.forEach { moveToTrash(it, type, context) }
+                davCleaned += toRemove.size
+            }
         }
+        if (davCleaned > 0) LogManager.i("Engine", "因 WebDAV 额度下调，已将 $davCleaned 张多余图片移至回收站。")
     }
 }
