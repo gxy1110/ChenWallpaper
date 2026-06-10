@@ -132,8 +132,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 👇 核心升级 1：原生 .log 文件导出生成器
-        val exportLogLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        // ================== 👇 核心修复点：删除了不兼容的构造参数 ==================
+        val exportLogLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument()) { uri ->
             if (uri != null) {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // =====================================================================
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener { startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) }) }
         findViewById<Button>(R.id.btnStartFetch).setOnClickListener {
@@ -167,7 +168,6 @@ class MainActivity : ComponentActivity() {
             val sv = ScrollView(this).apply { addView(tv) }
             AlertDialog.Builder(this).setTitle("底层运行日志 (最新1000条)").setView(sv)
                 .setPositiveButton("导出为 .log 文件") { _, _ -> 
-                    // 调用保存文件框架
                     val timeTag = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                     exportLogLauncher.launch("ChenWall_Log_$timeTag.log")
                 }
@@ -187,7 +187,6 @@ class MainActivity : ComponentActivity() {
             val newApiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
             val newDavTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
             
-            // 👇 核心升级 2：精准记录每一次保存时的容量变动意图
             LogManager.i("Config", "保存全局配置 | API保留额度: $oldApiTarget -> $newApiTarget | WebDAV额度: $oldDavTarget -> $newDavTarget")
             
             prefs.edit()
@@ -237,7 +236,6 @@ class MainActivity : ComponentActivity() {
             val cbEnable = CheckBox(this).apply { isChecked = config.isEnabled }
             cbEnable.setOnCheckedChangeListener { _, isChecked -> 
                 config.isEnabled = isChecked
-                // 👇 核心升级 3：WebDAV 总开关的独立日志监听
                 LogManager.i("WebDAV", "节点 [${config.name}] 已${if(isChecked) "启用" else "停用"}")
                 WebDavManager.saveConfigs(this, configs) 
             }
