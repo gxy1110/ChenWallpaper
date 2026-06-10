@@ -11,7 +11,8 @@ import org.json.JSONObject
 import java.net.URI
 import java.util.UUID
 
-data class WebDavPath(val path: String, var isEnabled: Boolean = true)
+// 👇 修复：将 path 修改为 var，允许修改路径
+data class WebDavPath(var path: String, var isEnabled: Boolean = true)
 
 data class WebDavConfig(
     val id: String = UUID.randomUUID().toString(),
@@ -83,7 +84,6 @@ object WebDavManager {
             .edit().putString("webdav_configs", array.toString()).apply()
     }
 
-    // 核心 PROPFIND 解析引擎：向 WebDAV 发送探测包并解析 XML
     fun listDirectory(config: WebDavConfig, targetUrl: String): List<WebDavItem>? {
         try {
             val auth = if (config.user.isNotEmpty()) "Basic " + Base64.encodeToString("${config.user}:${config.pass}".toByteArray(), Base64.NO_WRAP) else ""
@@ -104,7 +104,6 @@ object WebDavManager {
                 var href = hrefMatch?.groupValues?.get(1) ?: continue
                 if (!href.startsWith("http")) href = baseUri.resolve(href).toString()
                 
-                // 去除自身文件夹的返回结果
                 if (href.trimEnd('/') == targetUrl.trimEnd('/')) continue
                 
                 val isFolder = block.contains("collection/>", true) || block.contains("collection></", true) || href.endsWith("/")
