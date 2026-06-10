@@ -45,7 +45,9 @@
                 <Button android:id="@+id/tabNetPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
                 <Button android:id="@+id/tabNetLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
                 <Button android:id="@+id/tabLocPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabDavPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
+                <Button android:id="@+id/tabDavLand" android:layout_width="wrap_content" android:layout_height="wrap_content" />
             </LinearLayout>
         </HorizontalScrollView>
 
@@ -115,17 +117,24 @@
             android:layout_marginBottom="80dp"
             android:clickable="true"
             android:focusable="true" />
-
-        <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:background="#FFFFFF">
-            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:padding="8dp">
-                <Button android:id="@+id/tabNetPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabNetLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabLocPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabLocLand" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabDavPort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp"/>
-                <Button android:id="@+id/tabDavLand" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:layout_gravity="bottom"
+            android:background="#88000000"
+            android:fillViewport="true">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:orientation="horizontal">
+                <Button android:id="@+id/btnSaveDetail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="💾 保存到相册" android:backgroundTint="#2196F3" android:layout_marginEnd="16dp"/>
+                <Button android:id="@+id/btnSetWall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#4CAF50" android:layout_marginEnd="16dp"/>
+                <Button android:id="@+id/btnDelete" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#F44336" android:layout_marginEnd="16dp"/>
+                <Button android:id="@+id/btnCloseDetail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#9E9E9E" android:text="关闭" />
             </LinearLayout>
         </HorizontalScrollView>
-        
     </FrameLayout>
 </FrameLayout>
