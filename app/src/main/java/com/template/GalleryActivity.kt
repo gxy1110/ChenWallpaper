@@ -153,11 +153,9 @@ class GalleryActivity : ComponentActivity() {
                 val prevScale = scaleFactor
                 scaleFactor *= detector.scaleFactor
                 scaleFactor = scaleFactor.coerceIn(1f, 10f) 
-                
                 val scaleChange = scaleFactor / prevScale
                 translateX = detector.focusX - (detector.focusX - translateX) * scaleChange
                 translateY = detector.focusY - (detector.focusY - translateY) * scaleChange
-                
                 detailImage.scaleX = scaleFactor
                 detailImage.scaleY = scaleFactor
                 detailImage.translationX = translateX
@@ -193,9 +191,7 @@ class GalleryActivity : ComponentActivity() {
         touchOverlay.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
             gestureDetector.onTouchEvent(event)
-            if (event.action == MotionEvent.ACTION_UP && scaleFactor <= 1f) {
-                resetZoom()
-            }
+            if (event.action == MotionEvent.ACTION_UP && scaleFactor <= 1f) resetZoom()
             true
         }
 
@@ -265,10 +261,25 @@ class GalleryActivity : ComponentActivity() {
             updateBatchUI()
         }
 
-        // ================== 👇 核心修复：先定义函数和数组 ==================
+        btnDeleteBatch.setOnClickListener {
+            if (selectedFiles.isEmpty()) return@setOnClickListener
+            val count = selectedFiles.size
+            if (isTrashMode) {
+                selectedFiles.forEach { it.delete() }
+                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
+            } else {
+                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
+                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
+            }
+            isSelectionMode = false
+            updateTabsAndLoad(currentType)
+        }
+
+        // 👇 核心引入：6 个标签栏的管理
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
-            findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand)
+            findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand),
+            findViewById(R.id.tabDavPort), findViewById(R.id.tabDavLand)
         )
 
         fun updateTabsAndLoad(type: Int) {
@@ -281,6 +292,8 @@ class GalleryActivity : ComponentActivity() {
             tabButtons[1].text = "网络横屏 (${fileManager.getWallpapers(1, isTrashMode, this).size})"
             tabButtons[2].text = "本地竖屏 (${fileManager.getWallpapers(2, isTrashMode, this).size})"
             tabButtons[3].text = "本地横屏 (${fileManager.getWallpapers(3, isTrashMode, this).size})"
+            tabButtons[4].text = "云盘竖屏 (${fileManager.getWallpapers(4, isTrashMode, this).size})"
+            tabButtons[5].text = "云盘横屏 (${fileManager.getWallpapers(5, isTrashMode, this).size})"
 
             for (i in tabButtons.indices) {
                 if (i == type) {
@@ -300,21 +313,8 @@ class GalleryActivity : ComponentActivity() {
         tabButtons[1].setOnClickListener { updateTabsAndLoad(1) }
         tabButtons[2].setOnClickListener { updateTabsAndLoad(2) }
         tabButtons[3].setOnClickListener { updateTabsAndLoad(3) }
-
-        // ================== 👇 修复：将调用代码放在函数定义之后 ==================
-        btnDeleteBatch.setOnClickListener {
-            if (selectedFiles.isEmpty()) return@setOnClickListener
-            val count = selectedFiles.size
-            if (isTrashMode) {
-                selectedFiles.forEach { it.delete() }
-                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
-            } else {
-                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
-                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
-            }
-            isSelectionMode = false
-            updateTabsAndLoad(currentType)
-        }
+        tabButtons[4].setOnClickListener { updateTabsAndLoad(4) }
+        tabButtons[5].setOnClickListener { updateTabsAndLoad(5) }
 
         btnBatchRestore.setOnClickListener {
             if (currentFiles.isNotEmpty()) {
