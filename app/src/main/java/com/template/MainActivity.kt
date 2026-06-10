@@ -34,19 +34,30 @@ class MainActivity : ComponentActivity() {
         etTarget.setText(prefs.getInt("target_count", 100).toString())
         swAutoRefresh.isChecked = prefs.getBoolean("auto_refresh", false)
 
-        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            if (uri != null) {
+        // 👇 核心升级1：改用 OpenMultipleDocuments()，直接唤醒原生系统文件管理器，且原生支持批量选择
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            if (uris.isNotEmpty()) {
+                Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val inputStream = contentResolver.openInputStream(uri)
-                        val tempFile = File(cacheDir, "temp_import.jpg")
-                        val outputStream = FileOutputStream(tempFile)
-                        inputStream?.copyTo(outputStream)
-                        inputStream?.close()
-                        outputStream.close()
-                        fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
-                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "本地导入成功！", Toast.LENGTH_SHORT).show() }
-                    } catch (e: Exception) { e.printStackTrace() }
+                    var count = 0
+                    for (uri in uris) {
+                        try {
+                            val inputStream = contentResolver.openInputStream(uri)
+                            // 使用带有时间戳和序号的安全命名，防止批量导入时覆盖
+                            val tempFile = File(cacheDir, "temp_import_${System.currentTimeMillis()}_$count.jpg")
+                            val outputStream = FileOutputStream(tempFile)
+                            inputStream?.copyTo(outputStream)
+                            inputStream?.close()
+                            outputStream.close()
+                            
+                            fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
+                            tempFile.delete() // 导入完毕后立刻清理临时文件，释放内存
+                            count++
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }
+                    withContext(Dispatchers.Main) { 
+                        Toast.makeText(this@MainActivity, "成功导入 $count 张本地壁纸！请进入图库查看", Toast.LENGTH_LONG).show() 
+                    }
                 }
             }
         }
@@ -59,12 +70,12 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", false) })
         }
 
-        // 打开回收站模式
         findViewById<Button>(R.id.btnTrash).setOnClickListener {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) })
         }
 
-        findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch("image/*") }
+        // 👇 核心升级2：传入 image/*，让文件管理器只过滤显示图片格式的文件
+        findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch(arrayOf("image/*")) }
 
         findViewById<Button>(R.id.btnSaveInterval).setOnClickListener {
             if (etInterval.text.isNotEmpty()) {
@@ -77,7 +88,6 @@ class MainActivity : ComponentActivity() {
             if (etTarget.text.isNotEmpty()) {
                 val target = etTarget.text.toString().toInt()
                 prefs.edit().putInt("target_count", target).apply()
-                // 核心：若调低了数量，立即随机把多余的移入回收站
                 fileManager.shrinkNetworkCache(target, this)
                 Toast.makeText(this, "目标张数已生效，引擎会根据该阈值运作", Toast.LENGTH_SHORT).show()
             }
