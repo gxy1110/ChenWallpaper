@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
@@ -57,7 +58,7 @@ class MainActivity : ComponentActivity() {
                     tvFetchStatus.setTextColor(Color.parseColor("#F44336"))
                 }
             } else if (key == "webdav_configs") {
-                renderWebDavList() // 监听到配置改变（包括红绿灯），立刻重绘UI
+                renderWebDavList()
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -159,7 +160,6 @@ class MainActivity : ComponentActivity() {
         }
         swAutoRefresh.setOnCheckedChangeListener { _, isChecked -> prefs.edit().putBoolean("auto_refresh", isChecked).apply() }
 
-        // ================== 👇 WebDAV 核心控制面板 ==================
         findViewById<Button>(R.id.btnAddWebDav).setOnClickListener { showAddWebDavDialog() }
         renderWebDavList()
     }
@@ -176,7 +176,6 @@ class MainActivity : ComponentActivity() {
 
             val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
             
-            // 硬盘图标 & 折叠触控区
             val tvIcon = TextView(this).apply { text = "💽 "; textSize = 20f }
             val tvName = TextView(this).apply { text = config.name; textSize = 16f; setPadding(8,0,0,0); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
             val tvStatus = TextView(this).apply { text = if(config.isConnected) "🟢" else "🔴"; setPadding(0,0,16,0) }
@@ -196,7 +195,6 @@ class MainActivity : ComponentActivity() {
             header.addView(tvIcon); header.addView(tvName); header.addView(tvStatus); header.addView(cbEnable); header.addView(btnDelete)
             rootCard.addView(header)
 
-            // 子路径列表 (折叠区)
             val pathContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 16, 0, 0); visibility = View.GONE }
             config.paths.forEach { p ->
                 val pRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
@@ -213,9 +211,6 @@ class MainActivity : ComponentActivity() {
             btnAddPath.setOnClickListener { showWebDavBrowser(config, configs) }
             pathContainer.addView(btnAddPath)
             
-            rootCard.addView(pathContainer)
-            
-            // 点击头部触发展开折叠 (自带动画)
             val clickListener = View.OnClickListener { pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
             tvIcon.setOnClickListener(clickListener); tvName.setOnClickListener(clickListener)
 
@@ -246,7 +241,13 @@ class MainActivity : ComponentActivity() {
     private fun showWebDavBrowser(config: WebDavConfig, configs: List<WebDavConfig>) {
         var currentUrl = config.url
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val tvPath = TextView(this).apply { setPadding(32,32,32,16); textStyle = android.graphics.Typeface.BOLD }
+        
+        // 👇 核心修复区：改为使用 setTypeface 实现代码层面的加粗
+        val tvPath = TextView(this).apply { 
+            setPadding(32,32,32,16)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        
         val listView = ListView(this)
         layout.addView(tvPath); layout.addView(listView)
 
@@ -265,7 +266,7 @@ class MainActivity : ComponentActivity() {
                     if (items != null) {
                         val displayList = mutableListOf<WebDavItem>()
                         if (url != config.url) displayList.add(WebDavItem(url.substringBeforeLast('/', url.removeSuffix("/").substringBeforeLast('/') + "/"), true, ".. (返回上级)"))
-                        displayList.addAll(items.filter { it.isFolder }) // 只显示文件夹供用户选择
+                        displayList.addAll(items.filter { it.isFolder })
                         
                         listView.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, displayList.map { "📁 ${it.name}" })
                         listView.setOnItemClickListener { _, _, position, _ -> loadUrl(displayList[position].href) }
