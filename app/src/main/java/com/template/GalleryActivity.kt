@@ -50,7 +50,7 @@ class GalleryActivity : ComponentActivity() {
         val batchActionContainer = findViewById<HorizontalScrollView>(R.id.batchActionContainer)
         
         val btnSaveBatch = findViewById<Button>(R.id.btnSaveBatch)
-        val btnDeleteBatch = findViewById<Button>(R.id.btnDeleteBatch) // 新增批量删除绑定
+        val btnDeleteBatch = findViewById<Button>(R.id.btnDeleteBatch)
         
         tvTitle.text = if (isTrashMode) "回收站" else "已缓存图库"
         if (isTrashMode) {
@@ -67,7 +67,7 @@ class GalleryActivity : ComponentActivity() {
                 batchActionContainer.visibility = View.VISIBLE
                 btnSaveBatch.text = "保存(${selectedFiles.size})"
                 
-                // 👇 根据当前处于哪个模式，智能变化按钮名字
+                // 智能切换按钮文字
                 btnDeleteBatch.text = if (isTrashMode) "彻底删除(${selectedFiles.size})" else "移至回收站(${selectedFiles.size})"
             } else {
                 batchActionContainer.visibility = View.GONE
@@ -267,7 +267,7 @@ class GalleryActivity : ComponentActivity() {
             updateBatchUI()
         }
         
-        // ================== 👇 新增：批量删除核心控制器 ==================
+        // ================== 👇 核心加入：批量删除控制器 ==================
         btnDeleteBatch.setOnClickListener {
             if (selectedFiles.isEmpty()) return@setOnClickListener
             val count = selectedFiles.size
@@ -278,7 +278,7 @@ class GalleryActivity : ComponentActivity() {
                 selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
                 Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
             }
-            // 操作完毕后，退出选择模式，并强制刷新当前列表
+            // 操作完毕后，退出选择模式并刷新
             isSelectionMode = false
             updateTabsAndLoad(currentType)
         }
