@@ -45,6 +45,7 @@ class GalleryActivity : ComponentActivity() {
         val btnDelete = findViewById<Button>(R.id.btnDelete)
         val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
         val detailImage = findViewById<ImageView>(R.id.detailImage)
+        val touchOverlay = findViewById<View>(R.id.touchOverlay)
         val batchActionContainer = findViewById<LinearLayout>(R.id.batchActionContainer)
         
         tvTitle.text = if (isTrashMode) "回收站" else "已缓存图库"
@@ -109,10 +110,14 @@ class GalleryActivity : ComponentActivity() {
         }
         gridView.adapter = adapter
 
-        // ================== 👇 核心修复：高分屏手势引擎增强 ==================
+        // ================== 👇 核心修复：纯净焦点追踪引擎 ==================
         var scaleFactor = 1f
         var translateX = 0f
         var translateY = 0f
+
+        // 必须重置支点为左上角 (0,0)，这样随后的数学换算才能完美贴合指尖坐标
+        detailImage.pivotX = 0f
+        detailImage.pivotY = 0f
 
         fun resetZoom() {
             scaleFactor = 1f
@@ -126,22 +131,28 @@ class GalleryActivity : ComponentActivity() {
 
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
-                // 1. 解决阻尼感重：在高分屏上引入 2.5 倍信号放大器，让缩放更加灵敏跟手
-                val sensitivity = 2.5f 
-                val factor = 1.0f + (detector.scaleFactor - 1.0f) * sensitivity
+                val prevScale = scaleFactor
+                // 回归底层系统倍率读取，解决无法缩小的恶性 Bug
+                scaleFactor *= detector.scaleFactor
+                scaleFactor = scaleFactor.coerceIn(1f, 10f) // 支持最大 10 倍无损预览
                 
-                scaleFactor *= factor
-                scaleFactor = scaleFactor.coerceIn(1f, 5f) 
+                val scaleChange = scaleFactor / prevScale
+                
+                // 核心焦点算法：保证以双指中心为圆心进行放大，完美跟手！
+                translateX = detector.focusX - (detector.focusX - translateX) * scaleChange
+                translateY = detector.focusY - (detector.focusY - translateY) * scaleChange
+                
                 detailImage.scaleX = scaleFactor
                 detailImage.scaleY = scaleFactor
+                detailImage.translationX = translateX
+                detailImage.translationY = translateY
                 return true
             }
         })
 
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
-                // 2. 解决重影感：加入互斥锁 (!scaleDetector.isInProgress)
-                // 只要系统判定双指还在屏幕上缩放，就绝对屏蔽掉拖拽逻辑，彻底杜绝指令打架！
+                // 如果在放大状态，且双指没有在进行缩放，才允许拖拽画面
                 if (scaleFactor > 1f && !scaleDetector.isInProgress) { 
                     translateX -= distanceX
                     translateY -= distanceY
@@ -151,15 +162,29 @@ class GalleryActivity : ComponentActivity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                resetZoom() 
+                if (scaleFactor > 1f) resetZoom() else {
+                    // 双击直接以指尖为中心点，爆拉 3 倍
+                    scaleFactor = 3f
+                    translateX = e.x - (e.x - translateX) * 3f
+                    translateY = e.y - (e.y - translateY) * 3f
+                    detailImage.scaleX = scaleFactor
+                    detailImage.scaleY = scaleFactor
+                    detailImage.translationX = translateX
+                    detailImage.translationY = translateY
+                }
                 return true
             }
         })
 
-        detailImage.isClickable = true
-        detailImage.setOnTouchListener { _, event ->
+        // 将监听器死死绑在不会移动的 touchOverlay 透明层上，杜绝重影反馈循环
+        touchOverlay.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
             gestureDetector.onTouchEvent(event)
+            
+            // 手指抬起时，如果不小心缩得比原图还小，自动回弹居中
+            if (event.action == MotionEvent.ACTION_UP && scaleFactor <= 1f) {
+                resetZoom()
+            }
             true
         }
         // =====================================================================
