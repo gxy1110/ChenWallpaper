@@ -62,32 +62,25 @@ object WebDavManager {
         val array = JSONArray()
         configs.forEach { c ->
             val obj = JSONObject()
-            obj.put("id", c.id)
-            obj.put("name", c.name)
-            obj.put("url", c.url)
-            obj.put("user", c.user)
-            obj.put("pass", c.pass)
-            obj.put("isEnabled", c.isEnabled)
-            obj.put("isConnected", c.isConnected)
+            obj.put("id", c.id); obj.put("name", c.name); obj.put("url", c.url)
+            obj.put("user", c.user); obj.put("pass", c.pass)
+            obj.put("isEnabled", c.isEnabled); obj.put("isConnected", c.isConnected)
             val pathsArray = JSONArray()
             c.paths.forEach { p ->
                 val pObj = JSONObject()
-                pObj.put("path", p.path)
-                pObj.put("isEnabled", p.isEnabled)
+                pObj.put("path", p.path); pObj.put("isEnabled", p.isEnabled)
                 pathsArray.put(pObj)
             }
             obj.put("paths", pathsArray)
             array.put(obj)
         }
-        context.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
-            .edit().putString("webdav_configs", array.toString()).apply()
+        context.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE).edit().putString("webdav_configs", array.toString()).apply()
     }
 
     fun listDirectory(config: WebDavConfig, targetUrl: String): List<WebDavItem>? {
         try {
-            // 👇 核心修复 1：严格保证 PROPFIND 请求目标以斜杠结尾，否则 Alist 等服务器会报 301/405 错误！
+            // 👇 核心修复：强制添加斜杠，防止 Alist 等服务器报 301/405 错误
             val safeUrl = if (targetUrl.endsWith("/")) targetUrl else "$targetUrl/"
-            
             val auth = if (config.user.isNotEmpty()) "Basic " + Base64.encodeToString("${config.user}:${config.pass}".toByteArray(), Base64.NO_WRAP) else ""
             val xml = """<?xml version="1.0" encoding="utf-8" ?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>"""
             val reqBuilder = Request.Builder().url(safeUrl).method("PROPFIND", xml.toRequestBody("application/xml".toMediaType())).header("Depth", "1")
@@ -99,14 +92,12 @@ object WebDavManager {
             val body = resp.body?.string() ?: return null
             val items = mutableListOf<WebDavItem>()
             val blocks = body.split(Regex("<[dD]:response|<response", RegexOption.IGNORE_CASE)).drop(1)
-            
             val baseUri = URI(config.url)
+            
             for (block in blocks) {
                 val hrefMatch = Regex("<[a-zA-Z0-9:]*href>([^<]+)</", RegexOption.IGNORE_CASE).find(block)
                 var href = hrefMatch?.groupValues?.get(1)?.trim() ?: continue
                 if (!href.startsWith("http")) href = baseUri.resolve(href).toString()
-                
-                // 去除自身目录的重复返回
                 if (href.trimEnd('/') == safeUrl.trimEnd('/')) continue
                 
                 val isFolder = block.contains("collection/>", true) || block.contains("collection></", true) || href.endsWith("/")
