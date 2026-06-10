@@ -87,6 +87,34 @@
             android:textColor="#FFFFFF"
             android:textSize="18sp" />
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="32dp">
+
+            <Button
+                android:id="@+id/btnImport"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="🖼️ 选图片"
+                android:backgroundTint="#9E9E9E"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/btnImportFolder"
+                android:layout_width="0dp"
+                android:layout_height="64dp"
+                android:layout_weight="1"
+                android:text="📁 导整个文件夹"
+                android:backgroundTint="#607D8B"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
+        
         <Button
             android:id="@+id/btnImport"
             android:layout_width="match_parent"
