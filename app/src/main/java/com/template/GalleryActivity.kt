@@ -1,5 +1,6 @@
 package com.template
 
+import android.annotation.SuppressLint
 import android.app.WallpaperManager
 import android.content.ContentValues
 import android.graphics.BitmapFactory
@@ -8,7 +9,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.GestureDetector
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
@@ -23,11 +27,11 @@ class GalleryActivity : ComponentActivity() {
     private var currentType = 0
     private var isTrashMode = false
 
-    // 新增：批量选择状态
     private var isSelectionMode = false
     private val selectedFiles = mutableSetOf<File>()
     private lateinit var adapter: BaseAdapter
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
@@ -40,6 +44,7 @@ class GalleryActivity : ComponentActivity() {
         val btnSetWall = findViewById<Button>(R.id.btnSetWall)
         val btnDelete = findViewById<Button>(R.id.btnDelete)
         val detailContainer = findViewById<FrameLayout>(R.id.detailContainer)
+        val detailImage = findViewById<ImageView>(R.id.detailImage)
         val batchActionContainer = findViewById<LinearLayout>(R.id.batchActionContainer)
         
         tvTitle.text = if (isTrashMode) "回收站" else "已缓存图库"
@@ -56,7 +61,6 @@ class GalleryActivity : ComponentActivity() {
 
         val gridView = findViewById<GridView>(R.id.galleryGridView)
         
-        // 更新 UI 界面的刷新函数
         fun updateBatchUI() {
             if (isSelectionMode) {
                 batchActionContainer.visibility = View.VISIBLE
@@ -74,8 +78,6 @@ class GalleryActivity : ComponentActivity() {
             override fun getItemId(position: Int) = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val file = currentFiles[position]
-                
-                // 使用 FrameLayout 组合原图与选中状态的遮罩层
                 val frameLayout = FrameLayout(this@GalleryActivity)
                 frameLayout.layoutParams = AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 600)
                 
@@ -85,10 +87,8 @@ class GalleryActivity : ComponentActivity() {
                 imageView.load(file)
                 frameLayout.addView(imageView)
 
-                // 批量选择模式下的 UI 渲染
                 if (isSelectionMode) {
                     val isSelected = selectedFiles.contains(file)
-                    
                     val overlay = View(this@GalleryActivity)
                     overlay.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     overlay.setBackgroundColor(if (isSelected) Color.parseColor("#662196F3") else Color.parseColor("#44000000"))
@@ -109,7 +109,59 @@ class GalleryActivity : ComponentActivity() {
         }
         gridView.adapter = adapter
 
-        // 长按进入批量选择模式
+        // ================== 👇 核心升级：图片缩放与手势追踪引擎 ==================
+        var scaleFactor = 1f
+        var translateX = 0f
+        var translateY = 0f
+
+        // 用于在打开新图片或关闭预览时，清除上一张图片的放大残留状态
+        fun resetZoom() {
+            scaleFactor = 1f
+            translateX = 0f
+            translateY = 0f
+            detailImage.scaleX = 1f
+            detailImage.scaleY = 1f
+            detailImage.translationX = 0f
+            detailImage.translationY = 0f
+        }
+
+        // 侦测双指缩放操作 (1x 到 5x)
+        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                scaleFactor *= detector.scaleFactor
+                scaleFactor = scaleFactor.coerceIn(1f, 5f) 
+                detailImage.scaleX = scaleFactor
+                detailImage.scaleY = scaleFactor
+                return true
+            }
+        })
+
+        // 侦测单指平移与双击复原
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                if (scaleFactor > 1f) { // 只有在放大的状态下才允许拖拽平移
+                    translateX -= distanceX
+                    translateY -= distanceY
+                    detailImage.translationX = translateX
+                    detailImage.translationY = translateY
+                }
+                return true
+            }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                resetZoom() // 双击直接恢复原状
+                return true
+            }
+        })
+
+        // 将事件拦截器绑定到图片视图上
+        detailImage.isClickable = true
+        detailImage.setOnTouchListener { _, event ->
+            scaleDetector.onTouchEvent(event)
+            gestureDetector.onTouchEvent(event)
+            true
+        }
+        // =====================================================================
+
         gridView.setOnItemLongClickListener { _, _, position, _ ->
             if (!isSelectionMode) {
                 isSelectionMode = true
@@ -119,7 +171,6 @@ class GalleryActivity : ComponentActivity() {
             true
         }
 
-        // 短按逻辑（选择模式 vs 预览模式）
         gridView.setOnItemClickListener { _, _, position, _ ->
             if (isSelectionMode) {
                 val file = currentFiles[position]
@@ -127,16 +178,15 @@ class GalleryActivity : ComponentActivity() {
                 updateBatchUI()
             } else {
                 currentDetailFile = currentFiles[position]
-                findViewById<ImageView>(R.id.detailImage).load(currentDetailFile)
+                resetZoom() // 每次点开新图，确保缩放重置
+                detailImage.load(currentDetailFile)
                 detailContainer.visibility = View.VISIBLE
             }
         }
 
-        // --- 保存到相册核心逻辑 ---
         fun saveToAlbum(filesToSave: List<File>) {
             if (filesToSave.isEmpty()) return
             Toast.makeText(this, "正在保存 ${filesToSave.size} 张图片...", Toast.LENGTH_SHORT).show()
-            
             Thread {
                 var successCount = 0
                 for (file in filesToSave) {
@@ -144,7 +194,6 @@ class GalleryActivity : ComponentActivity() {
                         val values = ContentValues().apply {
                             put(MediaStore.Images.Media.DISPLAY_NAME, "ChenWall_${System.currentTimeMillis()}.jpg")
                             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                            // 针对现代安卓版本(Android 10+)，自动归类到 Pictures/ChenWallpaper 文件夹
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ChenWallpaper")
                             }
@@ -156,7 +205,7 @@ class GalleryActivity : ComponentActivity() {
                             }
                             successCount++
                         }
-                        Thread.sleep(10) // 防止文件名生成过快重复
+                        Thread.sleep(10)
                     } catch (e: Exception) { e.printStackTrace() }
                 }
                 runOnUiThread {
@@ -165,7 +214,6 @@ class GalleryActivity : ComponentActivity() {
             }.start()
         }
 
-        // --- 批量操作栏按钮事件 ---
         findViewById<Button>(R.id.btnCancelBatch).setOnClickListener {
             isSelectionMode = false
             updateBatchUI()
@@ -180,7 +228,6 @@ class GalleryActivity : ComponentActivity() {
             updateBatchUI()
         }
 
-        // --- 原有逻辑代码 ---
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
             findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand)
@@ -188,7 +235,6 @@ class GalleryActivity : ComponentActivity() {
 
         fun updateTabsAndLoad(type: Int) {
             currentType = type
-            // 切换分类时，自动退出选择模式
             isSelectionMode = false
             selectedFiles.clear()
             updateBatchUI()
@@ -225,7 +271,6 @@ class GalleryActivity : ComponentActivity() {
             }
         }
 
-        // 单张操作：保存到相册
         findViewById<Button>(R.id.btnSaveDetail).setOnClickListener {
             currentDetailFile?.let { file -> saveToAlbum(listOf(file)) }
         }
@@ -236,6 +281,7 @@ class GalleryActivity : ComponentActivity() {
                     fileManager.restoreFromTrash(file, currentType, this)
                     Toast.makeText(this, "已恢复", Toast.LENGTH_SHORT).show()
                     detailContainer.visibility = View.GONE
+                    resetZoom() // 退出时重置缩放
                     updateTabsAndLoad(currentType)
                 } else {
                     Toast.makeText(this, "正在设置系统壁纸...", Toast.LENGTH_SHORT).show()
@@ -259,11 +305,15 @@ class GalleryActivity : ComponentActivity() {
                     Toast.makeText(this, "已移至回收站", Toast.LENGTH_SHORT).show()
                 }
                 detailContainer.visibility = View.GONE
+                resetZoom() // 退出时重置缩放
                 updateTabsAndLoad(currentType)
             }
         }
 
-        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { detailContainer.visibility = View.GONE }
+        findViewById<Button>(R.id.btnCloseDetail).setOnClickListener { 
+            detailContainer.visibility = View.GONE 
+            resetZoom() // 退出时重置缩放
+        }
 
         updateTabsAndLoad(0)
     }
