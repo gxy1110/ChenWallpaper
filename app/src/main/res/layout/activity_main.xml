@@ -50,11 +50,10 @@
             <CheckBox android:id="@+id/cbCustom" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自定义 API 扩展图源" />
             <EditText android:id="@+id/etCustomApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义 API (http...系统将自动检测分类)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp" android:layout_marginTop="8dp"/>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0" android:layout_marginBottom="8dp"/>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="API 额度:" android:textColor="#666666"/>
                 <EditText android:id="@+id/etTargetApi" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:hint="保留张数 (默认100)" android:inputType="number" android:background="@android:color/transparent" android:paddingStart="8dp" />
             </LinearLayout>
-            <Button android:id="@+id/btnSaveApiSettings" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="💾 保存 API 设置" android:backgroundTint="#2196F3" android:textColor="#FFFFFF" />
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
@@ -65,9 +64,19 @@
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="#FFFFFF" android:padding="8dp" android:layout_marginBottom="16dp">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="云盘额度:" android:textColor="#666666" android:layout_gravity="center_vertical"/>
             <EditText android:id="@+id/etTargetWebDav" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:hint="保留张数 (默认100)" android:inputType="number" android:background="@android:color/transparent" android:paddingStart="8dp" />
-            <Button android:id="@+id/btnSaveTargetWebDav" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="保存" android:backgroundTint="#FF9800" />
         </LinearLayout>
 
-        <LinearLayout android:id="@+id/webDavContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:animateLayoutChanges="true" android:layout_marginBottom="32dp" />
+        <LinearLayout android:id="@+id/webDavContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:animateLayoutChanges="true" android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnSaveAll"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:text="💾 保存所有高级配置"
+            android:backgroundTint="#2196F3"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:layout_marginBottom="32dp"/>
+
     </LinearLayout>
 </ScrollView>
