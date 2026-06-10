@@ -11,11 +11,12 @@ object FetchManager {
     private val customOkHttpClient = okhttp3.OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // WebDAV 文件夹深潜队列，避免一次性扫爆服务器
+    private val webDavFolderQueue = mutableMapOf<String, MutableList<String>>()
+
     fun startFetching(context: Context) {
         if (fetchJob?.isActive == true) return
         val prefs = context.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
-        
-        // 标记状态为正在运行，UI会自动响应
         prefs.edit().putBoolean("fetch_status_running", true).apply()
 
         fetchJob = scope.launch {
@@ -27,84 +28,111 @@ object FetchManager {
                     val useBuiltIn = prefs.getBoolean("use_builtin", true)
                     val useCustom = prefs.getBoolean("use_custom", false)
                     val customApi = prefs.getString("custom_api", "") ?: ""
+                    
+                    val webDavConfigs = WebDavManager.loadConfigs(context).filter { it.isEnabled }
 
                     val ports = fileManager.getWallpapers(0, false, context)
                     val lands = fileManager.getWallpapers(1, false, context)
+                    val davPorts = fileManager.getWallpapers(4, false, context)
+                    val davLands = fileManager.getWallpapers(5, false, context)
 
                     val needPort = ports.size < target || autoRefresh
                     val needLand = lands.size < target || autoRefresh
+                    val needDav = davPorts.size < target || davLands.size < target || autoRefresh
 
-                    // 1. 构建抓取任务池
                     val actions = mutableListOf<String>()
                     if (useBuiltIn) {
                         if (needPort) actions.add("BUILTIN_PORT")
                         if (needLand) actions.add("BUILTIN_LAND")
                     }
-                    if (useCustom && customApi.isNotBlank()) {
-                        if (needPort || needLand) actions.add("CUSTOM")
-                    }
+                    if (useCustom && customApi.isNotBlank() && (needPort || needLand)) actions.add("CUSTOM")
+                    if (webDavConfigs.isNotEmpty() && needDav) actions.add("WEBDAV")
 
                     var performedFetch = false
 
-                    // 2. 随机抽取一个任务执行（严格限流单次请求）
                     if (actions.isNotEmpty()) {
                         val action = actions.random()
-                        var fetchedBytes: ByteArray? = null
-                        var determinedType = -1
 
-                        when (action) {
-                            "BUILTIN_PORT" -> {
-                                fetchedBytes = networkManager.fetchPortraitWallpaper()
-                                determinedType = 0
-                            }
-                            "BUILTIN_LAND" -> {
-                                fetchedBytes = networkManager.fetchLandscapeWallpaper()
-                                determinedType = 1
-                            }
-                            "CUSTOM" -> {
-                                try {
-                                    val req = okhttp3.Request.Builder().url(customApi).build()
-                                    fetchedBytes = customOkHttpClient.newCall(req).execute().body?.bytes()
-                                    // 👇 核心修复：解析图片二进制流，智能判断横竖屏！
-                                    if (fetchedBytes != null) {
-                                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                                        BitmapFactory.decodeByteArray(fetchedBytes, 0, fetchedBytes.size, opts)
-                                        determinedType = if (opts.outWidth > opts.outHeight) 1 else 0
-                                    }
-                                } catch (e: Exception) { e.printStackTrace() }
-                            }
-                        }
-
-                        // 3. 处理数据入库
-                        if (fetchedBytes != null && determinedType != -1) {
-                            val currentPool = fileManager.getWallpapers(determinedType, false, context)
-                            if (currentPool.size < target || autoRefresh) {
-                                val saved = fileManager.saveNetworkWallpaper(fetchedBytes, determinedType, context)
-                                if (saved != null) {
-                                    dupCount = 0
-                                    if (currentPool.size >= target && autoRefresh) {
-                                        fileManager.moveToTrash(currentPool.random(), determinedType, context)
+                        if (action == "WEBDAV") {
+                            val config = webDavConfigs.random()
+                            val enabledPaths = config.paths.filter { it.isEnabled }
+                            if (enabledPaths.isNotEmpty()) {
+                                // 如果队列空了，重新从根路径开始深度搜寻
+                                if (webDavFolderQueue[config.id].isNullOrEmpty()) {
+                                    webDavFolderQueue[config.id] = enabledPaths.map { it.path }.toMutableList()
+                                }
+                                
+                                val queue = webDavFolderQueue[config.id]!!
+                                val targetPath = queue.removeAt(0) // 弹出一个文件夹进行扫描
+                                
+                                val items = WebDavManager.listDirectory(config, targetPath)
+                                if (items != null) {
+                                    config.isConnected = true // 点亮绿灯
+                                    WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
+                                    
+                                    val subFolders = items.filter { it.isFolder }.map { it.href }
+                                    queue.addAll(subFolders) // 发现子文件夹，塞入队列等待日后深潜
+                                    
+                                    val images = items.filter { !it.isFolder && (it.name.endsWith(".jpg", true) || it.name.endsWith(".png", true) || it.name.endsWith(".jpeg", true)) }
+                                    if (images.isNotEmpty()) {
+                                        val imgTarget = images.random()
+                                        val bytes = WebDavManager.downloadFile(config, imgTarget.href)
+                                        if (bytes != null) {
+                                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                                            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                                val type = if (opts.outWidth > opts.outHeight) 5 else 4
+                                                val currentDavPool = fileManager.getWallpapers(type, false, context)
+                                                
+                                                val saved = fileManager.saveWebDavWallpaper(bytes, type, context)
+                                                if (saved != null) {
+                                                    dupCount = 0
+                                                    if (currentDavPool.size >= target && autoRefresh) fileManager.moveToTrash(currentDavPool.random(), type, context)
+                                                } else dupCount++
+                                                performedFetch = true
+                                            }
+                                        }
                                     }
                                 } else {
-                                    dupCount++ // 触发MD5去重，算作重复
+                                    // 连接失败，亮红灯
+                                    config.isConnected = false
+                                    WebDavManager.saveConfigs(context, WebDavManager.loadConfigs(context).map { if(it.id == config.id) config else it })
                                 }
                             }
-                            performedFetch = true
+                        } else {
+                            var fetchedBytes: ByteArray? = null
+                            var type = -1
+                            when (action) {
+                                "BUILTIN_PORT" -> { fetchedBytes = networkManager.fetchPortraitWallpaper(); type = 0 }
+                                "BUILTIN_LAND" -> { fetchedBytes = networkManager.fetchLandscapeWallpaper(); type = 1 }
+                                "CUSTOM" -> {
+                                    try {
+                                        fetchedBytes = customOkHttpClient.newCall(okhttp3.Request.Builder().url(customApi).build()).execute().body?.bytes()
+                                        if (fetchedBytes != null) {
+                                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                            BitmapFactory.decodeByteArray(fetchedBytes, 0, fetchedBytes.size, opts)
+                                            type = if (opts.outWidth > opts.outHeight) 1 else 0
+                                        }
+                                    } catch (e: Exception) {}
+                                }
+                            }
+                            if (fetchedBytes != null && type != -1) {
+                                val currentPool = fileManager.getWallpapers(type, false, context)
+                                val saved = fileManager.saveNetworkWallpaper(fetchedBytes, type, context)
+                                if (saved != null) {
+                                    dupCount = 0
+                                    if (currentPool.size >= target && autoRefresh) fileManager.moveToTrash(currentPool.random(), type, context)
+                                } else dupCount++
+                                performedFetch = true
+                            }
                         }
                     }
 
-                    // 4. 智能休眠策略
-                    if (dupCount >= 3) {
-                        dupCount = 0
-                        delay(10000L) // API枯竭，长休眠
-                    } else if (performedFetch) {
-                        delay(1000L)  // 正常1秒间隔
-                    } else {
-                        delay(3000L)  // 任务达标，降频巡检
-                    }
+                    if (dupCount >= 3) { dupCount = 0; delay(10000L) } 
+                    else if (performedFetch) delay(1000L)
+                    else delay(3000L)
                 }
             } finally {
-                // 无论是被手动停止还是异常断开，必然更新状态为停止
                 prefs.edit().putBoolean("fetch_status_running", false).apply()
             }
         }
@@ -113,7 +141,6 @@ object FetchManager {
     fun stopFetching(context: Context) {
         fetchJob?.cancel()
         fetchJob = null
-        val prefs = context.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("fetch_status_running", false).apply()
+        context.getSharedPreferences("WallPrefs", Context.MODE_PRIVATE).edit().putBoolean("fetch_status_running", false).apply()
     }
 }
