@@ -5,6 +5,12 @@ plugins {
 }
 android {
     compileSdk = 34
+    signingConfigs {
+        create("release") {
+            storeFile = file("chen.keystore")
+            storePassword = "cW8@mK2!pL9#vX5"
+            keyAlias = "chen"
+            keyPassword = "cW8@mK2!pL9#vX5"
     defaultConfig {
         applicationId = "com.chenchen.wallpaper"
         minSdk = Libs.App.minSdkVersion
@@ -17,6 +23,7 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -24,6 +31,7 @@ android {
         }
         getByName("debug") {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
