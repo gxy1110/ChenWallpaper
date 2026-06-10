@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URI
 
 class MainActivity : ComponentActivity() {
     private lateinit var webDavContainer: LinearLayout
@@ -33,13 +34,11 @@ class MainActivity : ComponentActivity() {
 
         val etInterval = findViewById<EditText>(R.id.etInterval)
         val swAutoRefresh = findViewById<Switch>(R.id.swAutoRefresh)
-        
         val cbBuiltIn = findViewById<CheckBox>(R.id.cbBuiltIn)
         val cbCustom = findViewById<CheckBox>(R.id.cbCustom)
         val etCustomApi = findViewById<EditText>(R.id.etCustomApi)
         val etTargetApi = findViewById<EditText>(R.id.etTargetApi)
         val etTargetWebDav = findViewById<EditText>(R.id.etTargetWebDav)
-        
         val tvFetchStatus = findViewById<TextView>(R.id.tvFetchStatus)
         webDavContainer = findViewById(R.id.webDavContainer)
 
@@ -238,18 +237,20 @@ class MainActivity : ComponentActivity() {
             config.paths.forEach { p ->
                 val pRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
                 
-                // 👇 核心修复 1：完美解析完整路径名，即使路径再深也不会丢失。并确保显示时加上前面的 /
-                val relativePath = java.net.URLDecoder.decode(p.path.removePrefix(config.url).let { if (it.startsWith("/")) it else "/$it" }, "UTF-8")
+                // 👇 核心修复：通过原生 URI 解析出绝对路径，彻底消灭只有 "/" 的 BUG
+                val decodedPath = try {
+                    java.net.URLDecoder.decode(URI(p.path).path, "UTF-8")
+                } catch (e: Exception) { p.path }
                 
                 val pText = TextView(this).apply { 
-                    text = "📂 $relativePath"
+                    text = "📂 $decodedPath"
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) 
                 }
                 
                 val pCb = CheckBox(this).apply { isChecked = p.isEnabled }
                 pCb.setOnCheckedChangeListener { _, isChecked -> p.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
                 
-                // 👇 核心修复 2：加入独立的针对这条路径的“修改路径”按钮
+                // 👇 核心修复：点击修改按钮，直接唤起网盘浏览器去选择新路径替换！
                 val pEditBtn = Button(this).apply { 
                     text = "📝"
                     setBackgroundColor(Color.parseColor("#2196F3"))
@@ -259,12 +260,7 @@ class MainActivity : ComponentActivity() {
                 }
                 pEditBtn.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,8,0) }
                 pEditBtn.setOnClickListener {
-                    val etPath = EditText(this@MainActivity).apply { setText(p.path) }
-                    AlertDialog.Builder(this@MainActivity).setTitle("手工修改完整抓取路径").setView(etPath).setPositiveButton("保存") { _, _ ->
-                        p.path = etPath.text.toString().trim()
-                        WebDavManager.saveConfigs(this@MainActivity, configs)
-                        renderWebDavList()
-                    }.setNegativeButton("取消", null).show()
+                    showWebDavBrowser(config, configs, p) // 传入当前路径对象，要求浏览器覆写它
                 }
 
                 val pDel = Button(this).apply { 
@@ -286,7 +282,7 @@ class MainActivity : ComponentActivity() {
                 setTextColor(Color.WHITE)
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 16, 0, 0) }
             }
-            btnAddPath.setOnClickListener { showWebDavBrowser(config, configs) }
+            btnAddPath.setOnClickListener { showWebDavBrowser(config, configs, null) }
             pathContainer.addView(btnAddPath)
             
             header.setOnClickListener { pathContainer.visibility = if (pathContainer.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
@@ -343,8 +339,9 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton("取消", null).show()
     }
 
-    private fun showWebDavBrowser(config: WebDavConfig, configs: List<WebDavConfig>) {
-        var currentUrl = config.url
+    // 👇 核心升级：加入了 pathToEdit 参数，同时解禁文件的显示！
+    private fun showWebDavBrowser(config: WebDavConfig, configs: List<WebDavConfig>, pathToEdit: WebDavPath?) {
+        var currentUrl = if (pathToEdit != null) pathToEdit.path else config.url
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         
         val tvPath = TextView(this).apply { 
@@ -356,25 +353,41 @@ class MainActivity : ComponentActivity() {
         layout.addView(tvPath); layout.addView(listView)
 
         val dialog = AlertDialog.Builder(this).setTitle("浏览网络文件夹").setView(layout).setPositiveButton("选择当前目录") { _, _ ->
-            // 👇 核心修复 3：不再阻止添加多条子路径
-            config.paths.add(WebDavPath(currentUrl))
+            if (pathToEdit != null) {
+                pathToEdit.path = currentUrl // 覆写修改
+                Toast.makeText(this, "修改路径成功！", Toast.LENGTH_SHORT).show()
+            } else {
+                if (!config.paths.any { it.path == currentUrl }) config.paths.add(WebDavPath(currentUrl)) // 新增路径
+                Toast.makeText(this, "已添加抓取路径！", Toast.LENGTH_SHORT).show()
+            }
             WebDavManager.saveConfigs(this, configs)
             renderWebDavList()
-            Toast.makeText(this, "已添加抓取路径！", Toast.LENGTH_SHORT).show()
         }.setNegativeButton("取消", null).show()
 
         fun loadUrl(url: String) {
-            tvPath.text = "当前: " + java.net.URLDecoder.decode(url.removePrefix(config.url).let { if (it.startsWith("/")) it else "/$it" }, "UTF-8")
+            val decodedPath = try { java.net.URLDecoder.decode(URI(url).path, "UTF-8") } catch (e: Exception) { url }
+            tvPath.text = "当前: $decodedPath"
             CoroutineScope(Dispatchers.IO).launch {
                 val items = WebDavManager.listDirectory(config, url)
                 withContext(Dispatchers.Main) {
                     if (items != null) {
                         val displayList = mutableListOf<WebDavItem>()
                         if (url != config.url) displayList.add(WebDavItem(url.substringBeforeLast('/', url.removeSuffix("/").substringBeforeLast('/') + "/"), true, ".. (返回上级)"))
-                        displayList.addAll(items.filter { it.isFolder })
                         
-                        listView.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, displayList.map { "📁 ${it.name}" })
-                        listView.setOnItemClickListener { _, _, position, _ -> loadUrl(displayList[position].href) }
+                        // 👇 核心修复：优先显示文件夹，但在下面也会把图片文件显示出来（带有 🖼️ 图标）
+                        displayList.addAll(items.sortedBy { !it.isFolder })
+                        
+                        listView.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, displayList.map { 
+                            if (it.isFolder) "📁 ${it.name}" else "🖼️ ${it.name}" 
+                        })
+                        listView.setOnItemClickListener { _, _, position, _ -> 
+                            val item = displayList[position]
+                            if (item.isFolder) {
+                                loadUrl(item.href) 
+                            } else {
+                                Toast.makeText(this@MainActivity, "请点击底部的“选择当前目录”来抓取该文件夹，而不是点击单个文件", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     } else Toast.makeText(this@MainActivity, "连接失败或目录为空", Toast.LENGTH_SHORT).show()
                 }
             }
