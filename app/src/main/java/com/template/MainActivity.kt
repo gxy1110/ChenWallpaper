@@ -9,7 +9,6 @@ import android.graphics.Color
 import android.os.Bundle
 import android.widget.*
 import androidx.activity.ComponentActivity
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,9 +43,10 @@ class MainActivity : ComponentActivity() {
         cbCustom.isChecked = prefs.getBoolean("use_custom", false)
         etCustomApi.setText(prefs.getString("custom_api", ""))
 
-        val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
+        // 👇 修复1：为旧版 Kotlin 编译器显式指定 (SharedPreferences?, String?) 类型，消除推断报错
+        val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs: SharedPreferences?, key: String? ->
             if (key == "fetch_status_running") {
-                val isRunning = sharedPrefs.getBoolean(key, false)
+                val isRunning = sharedPrefs?.getBoolean(key, false) ?: false
                 if (isRunning) {
                     tvFetchStatus.text = "🟢 获取状态：正在后台自动抓取..."
                     tvFetchStatus.setTextColor(Color.parseColor("#4CAF50"))
@@ -59,9 +59,8 @@ class MainActivity : ComponentActivity() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         prefsListener.onSharedPreferenceChanged(prefs, "fetch_status_running")
 
-        // ================== 👇 核心体验升级：现代化照片选择器 ==================
-        // 彻底抛弃丑陋且碎片化的底层文件管理器，改用专为媒体打造的 PickMultipleVisualMedia
-        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        // 👇 修复2：改用 GetMultipleContents 接口，唤起厂商原生相册/图库实现高效多选
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
             if (uris.isNotEmpty()) {
                 Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
@@ -85,7 +84,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // =====================================================================
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
             startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) })
@@ -117,9 +115,9 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) })
         }
 
-        // 👇 核心体验升级：触发唤醒条件改为 ImageOnly（只显示图片）
+        // 仅过滤显示图片文件
         findViewById<Button>(R.id.btnImport).setOnClickListener { 
-            filePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) 
+            filePickerLauncher.launch("image/*") 
         }
 
         findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
