@@ -6,8 +6,6 @@ import java.io.File
 import java.security.MessageDigest
 
 class FileManager {
-    // 0: NetPort, 1: NetLand, 2: LocPort, 3: LocLand, 4: DavPort, 5: DavLand
-
     private fun calculateMD5(bytes: ByteArray): String {
         val md = MessageDigest.getInstance("MD5")
         return md.digest(bytes).joinToString("") { "%02x".format(it) }
@@ -29,13 +27,10 @@ class FileManager {
         return getDir(context, type, isTrash).listFiles()?.toList() ?: emptyList()
     }
 
-    // 阶级一：图源 API (最高权限，碾碎本地和 WebDAV 相同图)
     fun saveNetworkWallpaper(bytes: ByteArray, type: Int, context: Context): File? {
         val md5 = calculateMD5(bytes)
         val file = File(getDir(context, type, false), "$md5.jpg")
         if (file.exists()) return null 
-
-        // 强权清洗：碾碎 2,3(本地) 和 4,5(WebDAV)
         for (i in 2..5) {
             val target = File(getDir(context, i, false), "$md5.jpg")
             if (target.exists()) target.delete()
@@ -44,7 +39,6 @@ class FileManager {
         return file
     }
 
-    // 阶级二：本地导入 (中等权限，避让 API，碾碎 WebDAV)
     fun importLocalImage(filePath: String, context: Context): Boolean {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(filePath, options)
@@ -54,30 +48,20 @@ class FileManager {
         if (localFile.exists()) {
             val bytes = localFile.readBytes()
             val md5 = calculateMD5(bytes)
-            
-            // 避让高层
             if (File(getDir(context, 0, false), "$md5.jpg").exists() || File(getDir(context, 1, false), "$md5.jpg").exists()) return false
-
-            // 碾碎底层 WebDAV
             val targetDavPort = File(getDir(context, 4, false), "$md5.jpg")
             val targetDavLand = File(getDir(context, 5, false), "$md5.jpg")
             if (targetDavPort.exists()) targetDavPort.delete()
             if (targetDavLand.exists()) targetDavLand.delete()
-
             val type = if (isLandscape) 3 else 2
             val file = File(getDir(context, type, false), "$md5.jpg")
-            if (!file.exists()) {
-                file.writeBytes(bytes)
-                return true
-            }
+            if (!file.exists()) { file.writeBytes(bytes); return true }
         }
         return false
     }
 
-    // 阶级三：WebDAV (底层，任何高层有此图均乖乖拒收)
     fun saveWebDavWallpaper(bytes: ByteArray, type: Int, context: Context): File? {
         val md5 = calculateMD5(bytes)
-        // 避让 0,1,2,3
         for (i in 0..3) {
             if (File(getDir(context, i, false), "$md5.jpg").exists()) return null
         }
@@ -97,13 +81,15 @@ class FileManager {
         file.renameTo(File(activeDir, file.name))
     }
 
-    fun shrinkNetworkCache(targetCount: Int, context: Context) {
-        // 对 API (0,1) 和 WebDAV (4,5) 都执行容量收缩
-        listOf(0, 1, 4, 5).forEach { type ->
+    // 👇 核心分离：将 API 容量和 WebDAV 容量分别进行裁剪计算
+    fun shrinkNetworkCache(apiTarget: Int, davTarget: Int, context: Context) {
+        listOf(0, 1).forEach { type ->
             val files = getWallpapers(type, false, context).shuffled()
-            if (files.size > targetCount) {
-                files.take(files.size - targetCount).forEach { moveToTrash(it, type, context) }
-            }
+            if (files.size > apiTarget) files.take(files.size - apiTarget).forEach { moveToTrash(it, type, context) }
+        }
+        listOf(4, 5).forEach { type ->
+            val files = getWallpapers(type, false, context).shuffled()
+            if (files.size > davTarget) files.take(files.size - davTarget).forEach { moveToTrash(it, type, context) }
         }
     }
 }
