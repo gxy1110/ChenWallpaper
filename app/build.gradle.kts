@@ -90,4 +90,5 @@ dependencies {
     
     implementation("com.squareup.okhttp3:okhttp:4.9.3")
     implementation("io.coil-kt:coil:2.1.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }
