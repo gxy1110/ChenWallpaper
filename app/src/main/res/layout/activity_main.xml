@@ -29,6 +29,16 @@
             android:textSize="18sp" />
 
         <Button
+            android:id="@+id/btnManualUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginBottom="16dp"
+            android:backgroundTint="#8BC34A"
+            android:text="🔄 立即从选定源抓取"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp" />
+
+        <Button
             android:id="@+id/btnGallery"
             android:layout_width="match_parent"
             android:layout_height="64dp"
@@ -58,7 +68,7 @@
             android:textColor="#FFFFFF"
             android:textSize="18sp" />
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="引擎配置中心" android:textStyle="bold" android:layout_marginBottom="8dp"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="引擎基础配置" android:textStyle="bold" android:layout_marginBottom="8dp"/>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="#FFFFFF" android:padding="8dp" android:layout_marginBottom="8dp">
             <EditText android:id="@+id/etInterval" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:hint="切换间隔 (秒)" android:inputType="number" android:background="@android:color/transparent" android:paddingStart="12dp" />
@@ -77,6 +87,23 @@
             android:background="#FFFFFF"
             android:padding="16dp"
             android:text="定期刷新替换旧壁纸"
+            android:layout_marginBottom="24dp"
             android:textSize="16sp" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="高级设置：多源API配置" android:textStyle="bold" android:layout_marginBottom="8dp"/>
+        
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="#FFFFFF" android:padding="16dp" android:layout_marginBottom="32dp">
+            
+            <CheckBox android:id="@+id/cbBuiltIn" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="内置核心图源 (默认开启)" android:checked="true" />
+            <CheckBox android:id="@+id/cbCustom" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自定义 API 扩展图源" />
+
+            <EditText android:id="@+id/etCustomPortApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义竖屏 API (http...)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp" android:layout_marginTop="8dp"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0"/>
+            
+            <EditText android:id="@+id/etCustomLandApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义横屏 API (http...)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp"/>
+            <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0" android:layout_marginBottom="16dp"/>
+
+            <Button android:id="@+id/btnSaveApiSettings" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="💾 保存 API 设置" android:backgroundTint="#2196F3" android:textColor="#FFFFFF" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
