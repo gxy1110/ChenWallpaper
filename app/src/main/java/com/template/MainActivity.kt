@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.widget.*
 import androidx.activity.ComponentActivity
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,6 @@ class MainActivity : ComponentActivity() {
         cbCustom.isChecked = prefs.getBoolean("use_custom", false)
         etCustomApi.setText(prefs.getString("custom_api", ""))
 
-        // ================== 👇 核心状态监听引擎 ==================
         val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
             if (key == "fetch_status_running") {
                 val isRunning = sharedPrefs.getBoolean(key, false)
@@ -57,11 +57,11 @@ class MainActivity : ComponentActivity() {
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
-        // 刚进入软件时手动触发一次渲染
         prefsListener.onSharedPreferenceChanged(prefs, "fetch_status_running")
-        // =========================================================
 
-        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        // ================== 👇 核心体验升级：现代化照片选择器 ==================
+        // 彻底抛弃丑陋且碎片化的底层文件管理器，改用专为媒体打造的 PickMultipleVisualMedia
+        val filePickerLauncher = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
             if (uris.isNotEmpty()) {
                 Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
@@ -85,12 +85,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // =====================================================================
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
             startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) })
         }
 
-        // 👇 启动/停止控制按钮
         findViewById<Button>(R.id.btnStartFetch).setOnClickListener {
             val useBuiltIn = cbBuiltIn.isChecked
             val useCustom = cbCustom.isChecked
@@ -117,7 +117,10 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, GalleryActivity::class.java).apply { putExtra("IS_TRASH", true) })
         }
 
-        findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch(arrayOf("image/*")) }
+        // 👇 核心体验升级：触发唤醒条件改为 ImageOnly（只显示图片）
+        findViewById<Button>(R.id.btnImport).setOnClickListener { 
+            filePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) 
+        }
 
         findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
             prefs.edit()
