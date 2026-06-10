@@ -91,12 +91,21 @@
         android:background="#DD000000"
         android:visibility="gone"
         android:clickable="true">
+        
         <ImageView
             android:id="@+id/detailImage"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_marginBottom="80dp"
             android:scaleType="fitCenter" />
+            
+        <View
+            android:id="@+id/touchOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginBottom="80dp"
+            android:clickable="true"
+            android:focusable="true" />
             
         <HorizontalScrollView
             android:layout_width="match_parent"
@@ -110,7 +119,6 @@
                 android:gravity="center"
                 android:paddingHorizontal="16dp"
                 android:orientation="horizontal">
-                
                 <Button android:id="@+id/btnSaveDetail" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="💾 保存到相册" android:backgroundTint="#2196F3" android:layout_marginEnd="16dp"/>
                 <Button android:id="@+id/btnSetWall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#4CAF50" android:layout_marginEnd="16dp"/>
                 <Button android:id="@+id/btnDelete" android:layout_width="wrap_content" android:layout_height="wrap_content" android:backgroundTint="#F44336" android:layout_marginEnd="16dp"/>
