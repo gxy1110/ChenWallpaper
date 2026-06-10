@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         val tvFetchStatus = findViewById<TextView>(R.id.tvFetchStatus)
         webDavContainer = findViewById(R.id.webDavContainer)
 
+        // 初始化数据回显
         etInterval.setText(prefs.getInt("interval", 10).toString())
         swAutoRefresh.isChecked = prefs.getBoolean("auto_refresh", false)
         cbBuiltIn.isChecked = prefs.getBoolean("use_builtin", true)
@@ -147,25 +148,24 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.btnImport).setOnClickListener { filePickerLauncher.launch("image/*") }
         findViewById<Button>(R.id.btnImportFolder).setOnClickListener { folderPickerLauncher.launch(null) }
         
-        findViewById<Button>(R.id.btnSaveApiSettings).setOnClickListener {
+        // 👇 核心升级：一键保存全局配置拦截器
+        findViewById<Button>(R.id.btnSaveAll).setOnClickListener {
             val apiTarget = if (etTargetApi.text.isNotEmpty()) etTargetApi.text.toString().toInt() else 100
+            val davTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
+            
+            // 写入 SharedPreferences
             prefs.edit()
                 .putBoolean("use_builtin", cbBuiltIn.isChecked)
                 .putBoolean("use_custom", cbCustom.isChecked)
                 .putString("custom_api", etCustomApi.text.toString().trim())
                 .putInt("target_count_api", apiTarget)
+                .putInt("target_count_webdav", davTarget)
                 .apply()
-            val davTarget = prefs.getInt("target_count_webdav", 100)
+            
+            // 触发容量控制，根据新设置的保留容量清除多余图片
             fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
-            Toast.makeText(this, "API 设置及保留张数已保存", Toast.LENGTH_SHORT).show()
-        }
-        
-        findViewById<Button>(R.id.btnSaveTargetWebDav).setOnClickListener {
-            val davTarget = if (etTargetWebDav.text.isNotEmpty()) etTargetWebDav.text.toString().toInt() else 100
-            prefs.edit().putInt("target_count_webdav", davTarget).apply()
-            val apiTarget = prefs.getInt("target_count_api", 100)
-            fileManager.shrinkNetworkCache(apiTarget, davTarget, this)
-            Toast.makeText(this, "云盘保留张数已生效", Toast.LENGTH_SHORT).show()
+            
+            Toast.makeText(this, "所有配置已手动提交保存！", Toast.LENGTH_SHORT).show()
         }
 
         findViewById<Button>(R.id.btnSaveInterval).setOnClickListener {
@@ -175,6 +175,8 @@ class MainActivity : ComponentActivity() {
         swAutoRefresh.setOnCheckedChangeListener { _, isChecked -> prefs.edit().putBoolean("auto_refresh", isChecked).apply() }
 
         findViewById<Button>(R.id.btnAddWebDav).setOnClickListener { showAddWebDavDialog() }
+        
+        // 初始渲染 WebDAV 列表
         renderWebDavList()
     }
 
@@ -237,7 +239,6 @@ class MainActivity : ComponentActivity() {
             config.paths.forEach { p ->
                 val pRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
                 
-                // 更精准的相对路径提取算法
                 val decodedPath = try {
                     val fullPath = URI(p.path).path
                     val rootPath = URI(config.url).path
@@ -253,7 +254,6 @@ class MainActivity : ComponentActivity() {
                 val pCb = CheckBox(this).apply { isChecked = p.isEnabled }
                 pCb.setOnCheckedChangeListener { _, isChecked -> p.isEnabled = isChecked; WebDavManager.saveConfigs(this, configs) }
                 
-                // 修改按钮：在此唤出浏览器进行重选
                 val pEditBtn = Button(this).apply { 
                     text = "📝"
                     setBackgroundColor(Color.parseColor("#2196F3"))
@@ -367,7 +367,6 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton("取消", null).show()
 
         fun loadUrl(url: String) {
-            // 👇 致命 BUG 1 修复点：每次点击新文件夹，必须将变量覆盖！！
             currentUrl = url 
 
             val decodedPath = try {
