@@ -37,10 +37,18 @@
             <Button android:id="@+id/btnImportFolder" android:layout_width="0dp" android:layout_height="64dp" android:layout_weight="1" android:text="📁 导入文件夹" android:backgroundTint="#607D8B" android:textColor="#FFFFFF" android:textSize="16sp" />
         </LinearLayout>
 
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="高级：日志与查账中枢" android:textStyle="bold" android:layout_marginBottom="8dp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="#FFFFFF" android:padding="16dp" android:layout_marginBottom="24dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false" android:layout_marginBottom="8dp">
+                <Button android:id="@+id/btnViewLogs" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="📋 实时运行日志" android:backgroundTint="#607D8B" android:textColor="#FFFFFF" android:layout_marginEnd="8dp" />
+                <Button android:id="@+id/btnClearHistory" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="♻️ 清空抓取账本" android:backgroundTint="#9E9E9E" android:textColor="#FFFFFF" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="注: 清空账本后，被智能忽略的网盘老图片将会再次被强制获取。" android:textSize="12sp" android:textColor="#999999" />
+        </LinearLayout>
+
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="引擎基础配置" android:textStyle="bold" android:layout_marginBottom="8dp"/>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="#FFFFFF" android:padding="8dp" android:layout_marginBottom="8dp">
             <EditText android:id="@+id/etInterval" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:hint="切换间隔 (秒)" android:inputType="number" android:background="@android:color/transparent" android:paddingStart="12dp" />
-            <Button android:id="@+id/btnSaveInterval" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="保存时间" android:backgroundTint="#FF9800" />
         </LinearLayout>
         <Switch android:id="@+id/swAutoRefresh" android:layout_width="match_parent" android:layout_height="56dp" android:background="#FFFFFF" android:padding="16dp" android:text="定期刷新替换旧壁纸" android:layout_marginBottom="24dp" android:textSize="16sp" />
 
@@ -50,7 +58,7 @@
             <CheckBox android:id="@+id/cbCustom" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自定义 API 扩展图源" />
             <EditText android:id="@+id/etCustomApi" android:layout_width="match_parent" android:layout_height="56dp" android:hint="自定义 API (http...系统将自动检测分类)" android:inputType="textUri" android:background="@android:color/transparent" android:textSize="14sp" android:layout_marginTop="8dp"/>
             <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#E0E0E0" android:layout_marginBottom="8dp"/>
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="8dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="API 额度:" android:textColor="#666666"/>
                 <EditText android:id="@+id/etTargetApi" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:hint="保留张数 (默认100)" android:inputType="number" android:background="@android:color/transparent" android:paddingStart="8dp" />
             </LinearLayout>
@@ -77,6 +85,5 @@
             android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:layout_marginBottom="32dp"/>
-
     </LinearLayout>
 </ScrollView>
