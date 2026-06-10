@@ -59,10 +59,9 @@ class MainActivity : ComponentActivity() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         prefsListener.onSharedPreferenceChanged(prefs, "fetch_status_running")
 
-        // 1. 保留原本的图库选择器 (给手机厂商面子)
         val filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
             if (uris.isNotEmpty()) {
-                Toast.makeText(this, "正在后台批量导入 ${uris.size} 张图片...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在后台提取图片并排查重复项...", Toast.LENGTH_SHORT).show()
                 CoroutineScope(Dispatchers.IO).launch {
                     var count = 0
                     for (uri in uris) {
@@ -73,34 +72,34 @@ class MainActivity : ComponentActivity() {
                             inputStream?.copyTo(outputStream)
                             inputStream?.close()
                             outputStream.close()
-                            fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
+                            
+                            // 👇 根据底层的去重结果，统计真实导入成功的数量
+                            if (fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)) {
+                                count++
+                            }
                             tempFile.delete()
-                            count++
                         } catch (e: Exception) { e.printStackTrace() }
                     }
-                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "成功导入 $count 张本地壁纸！", Toast.LENGTH_LONG).show() }
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "过滤去重后，成功导入 $count 张新本地壁纸！", Toast.LENGTH_LONG).show() }
                 }
             }
         }
 
-        // ================== 👇 核心突破：目录树智能递归扫描引擎 ==================
         val folderPickerLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri != null) {
-                Toast.makeText(this, "正在深度扫描该文件夹及子文件夹，请稍候...", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "正在深度扫描并排查重复项，请稍候...", Toast.LENGTH_LONG).show()
                 
                 CoroutineScope(Dispatchers.IO).launch {
                     val rootDir = DocumentFile.fromTreeUri(this@MainActivity, treeUri)
                     val imageUris = mutableListOf<android.net.Uri>()
 
-                    // 递归探测算法：穿透所有子文件夹寻找图片
                     fun scanFolder(dir: DocumentFile) {
                         dir.listFiles().forEach { file ->
                             if (file.isDirectory) {
-                                scanFolder(file) // 是文件夹则继续往下钻
+                                scanFolder(file)
                             } else {
                                 val mime = file.type ?: ""
                                 val name = file.name?.lowercase() ?: ""
-                                // 嗅探文件类型或后缀名
                                 if (mime.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".jpeg")) {
                                     imageUris.add(file.uri)
                                 }
@@ -116,8 +115,6 @@ class MainActivity : ComponentActivity() {
                             return@launch
                         }
 
-                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "扫描到 ${imageUris.size} 张图片，正在批量导入...", Toast.LENGTH_SHORT).show() }
-
                         var count = 0
                         for (imgUri in imageUris) {
                             try {
@@ -128,22 +125,22 @@ class MainActivity : ComponentActivity() {
                                 inputStream?.close()
                                 outputStream.close()
 
-                                // 严格检测图片有效性
                                 val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                                 android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath, opts)
                                 if (opts.outWidth > 0 && opts.outHeight > 0) {
-                                    fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)
-                                    count++
+                                    // 👇 根据底层的去重结果，统计真实导入成功的数量
+                                    if (fileManager.importLocalImage(tempFile.absolutePath, this@MainActivity)) {
+                                        count++
+                                    }
                                 }
                                 tempFile.delete()
                             } catch (e: Exception) { e.printStackTrace() }
                         }
-                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "成功将 $count 张图片并入您的壁纸图库！", Toast.LENGTH_LONG).show() }
+                        withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "过滤去重后，成功将 $count 张图片并入本地图库！", Toast.LENGTH_LONG).show() }
                     }
                 }
             }
         }
-        // =====================================================================
 
         findViewById<Button>(R.id.btnStartService).setOnClickListener {
             startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply { putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, ChenWallpaperService::class.java)) })
@@ -179,7 +176,6 @@ class MainActivity : ComponentActivity() {
             filePickerLauncher.launch("image/*") 
         }
 
-        // 👇 触发目录树选择器
         findViewById<Button>(R.id.btnImportFolder).setOnClickListener {
             folderPickerLauncher.launch(null)
         }
