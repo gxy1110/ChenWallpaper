@@ -66,8 +66,6 @@ class GalleryActivity : ComponentActivity() {
             if (isSelectionMode) {
                 batchActionContainer.visibility = View.VISIBLE
                 btnSaveBatch.text = "保存(${selectedFiles.size})"
-                
-                // 智能切换按钮文字
                 btnDeleteBatch.text = if (isTrashMode) "彻底删除(${selectedFiles.size})" else "移至回收站(${selectedFiles.size})"
             } else {
                 batchActionContainer.visibility = View.GONE
@@ -266,24 +264,8 @@ class GalleryActivity : ComponentActivity() {
             isSelectionMode = false
             updateBatchUI()
         }
-        
-        // ================== 👇 核心加入：批量删除控制器 ==================
-        btnDeleteBatch.setOnClickListener {
-            if (selectedFiles.isEmpty()) return@setOnClickListener
-            val count = selectedFiles.size
-            if (isTrashMode) {
-                selectedFiles.forEach { it.delete() }
-                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
-            } else {
-                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
-                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
-            }
-            // 操作完毕后，退出选择模式并刷新
-            isSelectionMode = false
-            updateTabsAndLoad(currentType)
-        }
-        // =====================================================================
 
+        // ================== 👇 核心修复：先定义函数和数组 ==================
         val tabButtons = listOf<Button>(
             findViewById(R.id.tabNetPort), findViewById(R.id.tabNetLand), 
             findViewById(R.id.tabLocPort), findViewById(R.id.tabLocLand)
@@ -318,6 +300,21 @@ class GalleryActivity : ComponentActivity() {
         tabButtons[1].setOnClickListener { updateTabsAndLoad(1) }
         tabButtons[2].setOnClickListener { updateTabsAndLoad(2) }
         tabButtons[3].setOnClickListener { updateTabsAndLoad(3) }
+
+        // ================== 👇 修复：将调用代码放在函数定义之后 ==================
+        btnDeleteBatch.setOnClickListener {
+            if (selectedFiles.isEmpty()) return@setOnClickListener
+            val count = selectedFiles.size
+            if (isTrashMode) {
+                selectedFiles.forEach { it.delete() }
+                Toast.makeText(this, "已彻底粉碎 $count 张图片", Toast.LENGTH_SHORT).show()
+            } else {
+                selectedFiles.forEach { fileManager.moveToTrash(it, currentType, this) }
+                Toast.makeText(this, "已将 $count 张图片移至回收站", Toast.LENGTH_SHORT).show()
+            }
+            isSelectionMode = false
+            updateTabsAndLoad(currentType)
+        }
 
         btnBatchRestore.setOnClickListener {
             if (currentFiles.isNotEmpty()) {
